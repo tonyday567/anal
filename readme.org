@@ -1,0 +1,569 @@
+
+* anal
+
+[[https://hackage.haskell.org/package/anal][https://img.shields.io/hackage/v/anal.svg]]
+[[https://github.com/tonyday567/anal/actions?query=workflow%3Ahaskell-ci][https://github.com/tonyday567/anal/workflows/haskell-ci/badge.svg]]
+
+analysis: the prefix
+
+* Usage
+
+#+begin_src haskell :results output
+import Lib
+#+end_src
+
+* Development
+
+#+begin_src haskell :results output
+:r
+:set prompt "> "
+:set -Wno-type-defaults
+:set -Wno-name-shadowing
+:set -XOverloadedStrings
+:set -XRebindableSyntax
+import qualified Prelude
+import Anal
+import FlatParse.Basic
+import Data.Time.Calendar
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as C
+import Data.Mealy
+import Data.Profunctor
+import Data.Maybe
+import Data.Bifunctor
+import NumHask.Prelude
+import NumHask.Space
+import qualified Data.Map as Map
+import Data.FormatN
+import qualified Data.Text as Text
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell
+r <- getReturns
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell
+length r
+#+end_src
+
+#+RESULTS:
+: 10897
+
+#+begin_src haskell
+makeReturns
+#+end_src
+
+#+RESULTS:
+
+Returns
+
+
+
+#+begin_src haskell :results output
+p <- getPrices
+length p
+space1 (fst <$> p) :: Maybe (Range Day)
+#+end_src
+
+
+* Data
+
+** returns
+
+#+begin_src haskell :results output
+p <- getPrices
+r = drop 1 $ scan ret p
+#+end_src
+
+#+RESULTS:
+
+Basic Stats:
+
+#+begin_src haskell :results output
+space1 (fst <$> r) :: Maybe (Range Day)
+length r
+
+#+end_src
+
+#+RESULTS:
+: Just Range 1980-01-02 2023-03-17
+: 10897
+
+Daily average & stdev return
+
+ #+begin_src haskell
+bimap (percent commaSF (Just 3)) (percent commaSF (Just 3)) $ Data.Mealy.fold ((,) <$> (ma 1) <*> (std 1)) $ (snd <$> r)
+ #+end_src
+
+#+RESULTS:
+| 0.0330% | 1.14% |
+
+annualised
+
+ #+begin_src haskell
+bimap (percent commaSF (Just 3)) (percent commaSF (Just 3)) $ bimap (*250) (*sqrt(250)) <$> Data.Mealy.fold  ((,) <$> (ma 1) <*> (std 1)) $ (snd <$> r)
+ #+end_src
+
+#+RESULTS:
+| 8.24% | 18.0% |
+
+#+begin_src haskell
+Prelude.take 10 r
+#+end_src
+
+#+RESULTS:
+| 1980-01-02 | -0.019654352839890112 |
+| 1980-01-03 | -0.005687219120589464 |
+| 1980-01-04 |  0.012281684845870229 |
+| 1980-01-07 | 0.0028129413766146577 |
+| 1980-01-08 |  0.019472103412820314 |
+| 1980-01-09 | 0.0018348629001102184 |
+| 1980-01-10 |  0.007305968570550494 |
+| 1980-01-11 |                   0.0 |
+| 1980-01-14 |   0.00453927243341913 |
+| 1980-01-15 | 0.0063205628025894585 |
+
+#+begin_src haskell :results output
+import Data.Text (unpack)
+import Data.Time.Format.ISO8601
+(\(d,r) -> d <> "," <> unpack r) . bimap (formatShow iso8601Format) (fixed (Just 6)) <$> Prelude.take 10 r
+#+end_src
+
+#+RESULTS:
+: ["1980-01-02,-0.019654","1980-01-03,-0.005687","1980-01-04,0.012282","1980-01-07,0.002813","1980-01-08,0.019472","1980-01-09,0.001835","1980-01-10,0.007306","1980-01-11,0.000000","1980-01-14,0.004539","1980-01-15,0.006321"]
+
+#+begin_src haskell
+:t writeFile "other/returns.csv" . unlines $ (\(d,r) -> d <> "," <> unpack r) . bimap (formatShow iso8601Format) (fixed (Just 6)) <$> Prelude.take 10 r
+
+#+end_src
+
+#+RESULTS:
+: writeFile "other/returns.csv" . unlines $ (\(d,r) -> d <> "," <> unpack r) . bimap (formatShow iso8601Format) (fixed (Just 6)) <$> Prelude.take 10 r
+:   :: IO ()
+
+*** charts
+
+- [X] scanChart, scanHud
+- [X] foldScanChart
+- [X] scannerChart, tsRatesHud
+- [X] scannersChart
+- [X] histChart
+- [ ] quantileHistChart
+- [ ] digitChart
+- [ ] digitPixelChart
+- [ ] betaCheckChart
+
+     #+begin_src haskell
+betaCheck :: Double -> Double -> Mealy Double (Double, Double)
+betaCheck b r = (,) <$> xs' <*> ma'
+  where
+    xs' = depState (\a m -> a + b * m) (ma (1 - r))
+    ma' = ma r >>> delay [0]
+#+end_src
+  #+begin_src haskell
+  betaCheckChart :: Double -> Double -> Double -> Int -> [Double] -> [Chart Double]
+betaCheckChart b r rb d xs =
+  [ Chart (LineA defaultLineStyle) $ drop d $ xify' (scan (beta1 (ma (1 - rb))) $ fromList $ drop 100 $ scan (betaCheck b r) xs)
+  ]
+  #+end_src
+mealy scans
+- [ ] quantiles
+- [ ] digitize
+
+
+
+
+** Days
+
+monotonic. distribution?
+
+#+begin_src haskell
+count $ drop 1 $ scan (diff1 diffDays undefined) (fst <$> p)
+#+end_src
+
+#+RESULTS:
+: fromList [(1,8544),(2,99),(3,1982),(4,269),(5,2),(7,1)]
+
+When was the 7 day gap? 9/11
+
+#+begin_src haskell
+filter ((==7) . snd) $ drop 1 $ Prelude.zip p (scan (diff1 diffDays undefined) (fst <$> p))
+#+end_src
+
+#+RESULTS:
+| (2001-09-17 1038.8) | 7 |
+
+** FRED dataset
+
+[[https://fred.stlouisfed.org/series/SP500][S&P 500 (SP500) | FRED | St. Louis Fed]]
+
+last 10 years from FRED
+
+#+begin_quote
+DATE,SP500
+2013-03-18,1552.10
+2013-03-19,1548.34
+2013-03-20,1558.71
+#+end_quote
+
+*** fred dev
+Public holidays have a '.' instead of a double.
+
+#+begin_src haskell :results output
+bs <- BS.readFile "other/SP500.csv"
+length $ catMaybes $ runParserMaybe fredP <$> (drop 1 $ C.lines bs)
+fredPrices = [(d,p) | Just (d, Right p) <- runParserMaybe fredP <$> (drop 1 $ C.lines bs)]
+length fredPrices
+#+end_src
+
+#+RESULTS:
+: 2610
+: 2519
+
+#+begin_src haskell
+p0 = Prelude.take 10 $ snd <$> prices
+p0
+#+end_src
+
+#+RESULTS:
+| 1552.1 | 1548.34 | 1558.71 | 1545.8 | 1556.89 | 1551.69 | 1563.77 | 1562.85 | 1569.19 | 1562.17 |
+
+#+begin_src haskell
+rets = drop 1 $ scan retFred prices
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell
+retFred = second' ((\p p' -> p/p'-1) <$> id <*> (delay1 0))
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell
+Prelude.take 20 $ Prelude.zip prices (scan retFred prices)
+#+end_src
+
+#+RESULTS:
+| (2013-03-18 1552.1)  | (2013-03-18 Infinity)               |
+| (2013-03-19 1548.34) | (2013-03-19 -0.002422524321886499)  |
+| (2013-03-20 1558.71) | (2013-03-20 0.006697495382151253)   |
+| (2013-03-21 1545.8)  | (2013-03-21 -0.008282490007762933)  |
+| (2013-03-22 1556.89) | (2013-03-22 0.007174278690645686)   |
+| (2013-03-25 1551.69) | (2013-03-25 -0.0033399919069426742) |
+| (2013-03-26 1563.77) | (2013-03-26 0.007785060160212298)   |
+| (2013-03-27 1562.85) | (2013-03-27 -0.0005883218120312783) |
+| (2013-03-28 1569.19) | (2013-03-28 0.004056691301148607)   |
+| (2013-04-01 1562.17) | (2013-04-01 -0.0044736456388327905) |
+| (2013-04-02 1570.25) | (2013-04-02 0.005172292388152311)   |
+| (2013-04-03 1553.69) | (2013-04-03 -0.010546091386721801)  |
+| (2013-04-04 1559.98) | (2013-04-04 0.004048426648816772)   |
+| (2013-04-05 1553.28) | (2013-04-05 -0.004294926858036674)  |
+| (2013-04-08 1563.07) | (2013-04-08 0.006302791512154959)   |
+| (2013-04-09 1568.61) | (2013-04-09 0.003544307036792871)   |
+| (2013-04-10 1587.73) | (2013-04-10 0.012189135604133705)   |
+| (2013-04-11 1593.37) | (2013-04-11 0.003552241250086574)   |
+| (2013-04-12 1588.85) | (2013-04-12 -0.0028367548027137257) |
+| (2013-04-15 1552.36) | (2013-04-15 -0.02296629637788339)   |
+
+** Oz dataset
+
+[[https://au.investing.com/indices/us-spx-500-historical-data][S&P 500 Historical Rates - Investing.com AU]]
+
+  #+begin_quote
+"Date","Price","Open","High","Low","Vol.","Change %"
+"07/10/1999","1,317.60","1,325.40","1,328.00","1,314.10","","-0.59%"
+"06/10/1999","1,325.40","1,301.30","1,325.50","1,300.40","","1.85%"
+"05/10/1999","1,301.30","1,304.60","1,316.40","1,286.40","","-0.25%"
+"04/10/1999","1,304.60","1,282.80","1,304.60","1,282.80","","1.70%"
+"01/10/1999","1,282.80","1,282.70","1,283.20","1,265.80","","0.01%"
+"30/09/1999","1,282.70","1,268.40","1,291.30","1,268.40","","1.13%"
+  #+end_quote
+
+
+*** dev auinv prices
+
+#+begin_src haskell :results output
+bs <- BS.readFile "other/S&P 500 Historical Data.csv"
+length $ catMaybes $ runParserMaybe auinvP <$> (drop 1 $ C.lines bs)
+pricesString = [(d,p) | Just (d, p) <- runParserMaybe auinvP <$> (drop 1 $ C.lines bs)]
+prices1 = [(d,p) | (d, Just p) <- second (runParserMaybe double . strToUtf8) <$> pricesString]
+length prices1
+#+end_src
+
+#+RESULTS:
+: 5000
+: 5000
+
+#+begin_src haskell
+Prelude.take 10 prices1
+#+end_src
+
+#+RESULTS:
+| 1999-10-07 | 1317.6 |
+| 1999-10-06 | 1325.4 |
+| 1999-10-05 | 1301.3 |
+| 1999-10-04 | 1304.6 |
+| 1999-10-01 | 1282.8 |
+| 1999-09-30 | 1282.7 |
+| 1999-09-29 | 1268.4 |
+| 1999-09-28 | 1282.2 |
+| 1999-09-27 | 1283.3 |
+| 1999-09-24 | 1277.4 |
+
+
+#+begin_src haskell
+import NumHask.Space
+space1 (fst <$> prices1) :: Maybe (Range Day)
+#+end_src
+
+#+RESULTS:
+: Just Range 1980-01-01 1999-10-07
+
+
+prices4
+
+#+begin_src haskell :results output
+import Data.Maybe
+bs <- BS.readFile "other/S&P 500 Historical Data (4).csv"
+length $ catMaybes $ runParserMaybe auinvP <$> (drop 1 $ C.lines bs)
+pricesString = [(d,p) | Just (d, p) <- runParserMaybe auinvP <$> (drop 1 $ C.lines bs)]
+prices4 = [(d,p) | (d, Just p) <- second (runParserMaybe double . strToUtf8) <$> pricesString]
+length prices4
+space1 (fst <$> prices4) :: Maybe (Range Day)
+#+end_src
+
+#+RESULTS:
+: 5000
+: 5000
+: Just Range 1999-01-04 2018-11-13
+
+
+#+begin_src haskell :results output
+import Data.Maybe
+bs <- BS.readFile "other/S&P 500 Historical Data (5).csv"
+length $ catMaybes $ runParserMaybe auinvP <$> (drop 1 $ C.lines bs)
+pricesString = [(d,p) | Just (d, p) <- runParserMaybe auinvP <$> (drop 1 $ C.lines bs)]
+prices5 = [(d,p) | (d, Just p) <- second (runParserMaybe double . strToUtf8) <$> pricesString]
+length prices5
+space1 (fst <$> prices5) :: Maybe (Range Day)
+#+end_src
+
+#+RESULTS:
+: 1311
+: 1311
+: Just Range 2018-01-02 2023-03-17
+
+
+Combine and check equality via a map.
+
+Test for uniqueness
+
+#+begin_src haskell
+import qualified Data.Set as Set
+Set.size $ Set.fromList $ fst <$> prices5
+#+end_src
+
+#+RESULTS:
+: 1311
+
+#+begin_src haskell
+Map.filter (\x -> x) $ Map.intersectionWith (/=) (Map.fromList prices1) (Map.fromList prices4)
+#+end_src
+
+#+RESULTS:
+: fromList []
+
+
+#+begin_src haskell
+Map.filter (\x -> x) $ Map.intersectionWith (/=) (Map.fromList prices4) (Map.fromList prices5)
+#+end_src
+
+#+RESULTS:
+: fromList []
+
+
+#+begin_src haskell
+pricesMap = Map.unions [(Map.fromList prices1), (Map.fromList prices4), (Map.fromList prices5)]
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell
+Prelude.take 10 $ Map.toList pricesMap
+#+end_src
+
+#+RESULTS:
+| 1980-01-01 | 107.9 |
+| 1980-01-02 | 105.8 |
+| 1980-01-03 | 105.2 |
+| 1980-01-04 | 106.5 |
+| 1980-01-07 | 106.8 |
+| 1980-01-08 | 108.9 |
+| 1980-01-09 | 109.1 |
+| 1980-01-10 | 109.9 |
+| 1980-01-11 | 109.9 |
+| 1980-01-14 | 110.4 |
+
+
+
+#+begin_src haskell
+Prelude.take 20 $ Prelude.zip (Map.toList pricesMap) (scan ret $ Map.toList pricesMap)
+#+end_src
+
+#+RESULTS:
+| (1980-01-01 107.9) | (1980-01-01 Infinity)               |
+| (1980-01-02 105.8) | (1980-01-02 -0.019462465245597804)  |
+| (1980-01-03 105.2) | (1980-01-03 -0.005671077504725841)  |
+| (1980-01-04 106.5) | (1980-01-04 0.012357414448669113)   |
+| (1980-01-07 106.8) | (1980-01-07 0.0028169014084507005)  |
+| (1980-01-08 108.9) | (1980-01-08 0.0196629213483146)     |
+| (1980-01-09 109.1) | (1980-01-09 0.0018365472910926162)  |
+| (1980-01-10 109.9) | (1980-01-10 0.007332722273144077)   |
+| (1980-01-11 109.9) | (1980-01-11 0.0)                    |
+| (1980-01-14 110.4) | (1980-01-14 0.0045495905368517775)  |
+| (1980-01-15 111.1) | (1980-01-15 0.006340579710144789)   |
+| (1980-01-16 111.1) | (1980-01-16 0.0)                    |
+| (1980-01-17 110.7) | (1980-01-17 -0.0036003600360035026) |
+| (1980-01-18 111.1) | (1980-01-18 0.0036133694670279493)  |
+| (1980-01-21 112.1) | (1980-01-21 0.00900090009000909)    |
+| (1980-01-22 111.5) | (1980-01-22 -0.005352363960749229)  |
+| (1980-01-23 113.4) | (1980-01-23 0.01704035874439458)    |
+| (1980-01-24 113.7) | (1980-01-24 0.002645502645502562)   |
+| (1980-01-25 113.6) | (1980-01-25 -0.0008795074758136678) |
+| (1980-01-28 114.8) | (1980-01-28 0.010563380281690238)   |
+
+
+*** are zero-return days no-trade days???
+
+Day overlap
+
+#+begin_src haskell
+(Just rangeFred) = space1 (Map.keys (Map.fromList fredPrices)) :: Maybe (Range Day)
+rangeFred
+#+end_src
+
+#+RESULTS:
+: Range 2013-03-18 2023-03-17
+
+#+begin_src haskell
+space1 (Map.keys (pricesMap)) :: Maybe (Range Day)
+#+end_src
+
+#+RESULTS:
+: Just Range 1980-01-01 2023-03-17
+
+#+begin_src haskell
+prices' = (Map.filterWithKey ((\k _ -> k |.| rangeFred)) pricesMap)
+prices'' = Map.fromList fredPrices
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell
+Map.size $ Map.difference prices' prices''
+#+end_src
+
+#+RESULTS:
+: 0
+
+equality
+
+#+begin_src haskell
+filter (uncurry (/=) . snd) $ Map.toList $ Map.intersectionWith (,) prices' prices''
+#+end_src
+
+#+RESULTS:
+| 2021-07-19 | (4258.63 4258.49) |
+| 2021-07-20 | (4323.21 4323.06) |
+| 2021-07-23 | (4411.8 4411.79)  |
+| 2021-07-26 | (4422.23 4422.3)  |
+| 2021-07-28 | (4400.65 4400.64) |
+| 2021-08-02 | (4387.11 4387.16) |
+| 2021-08-04 | (4402.68 4402.66) |
+| 2021-08-12 | (4460.84 4460.83) |
+| 2021-08-16 | (4479.66 4479.71) |
+| 2021-08-23 | (4479.54 4479.53) |
+| 2021-08-26 | (4469.91 4470.0)  |
+| 2021-09-16 | (4473.76 4473.75) |
+| 2021-09-21 | (4354.18 4354.19) |
+| 2021-10-01 | (4357.05 4357.04) |
+| 2021-10-08 | (4391.36 4391.34) |
+| 2021-10-12 | (4350.64 4350.65) |
+| 2021-10-14 | (4438.23 4438.26) |
+| 2021-10-18 | (4486.48 4486.46) |
+| 2021-11-15 | (4682.81 4682.8)  |
+| 2021-11-18 | (4706.64 4704.54) |
+| 2021-11-22 | (4682.95 4682.94) |
+| 2021-12-13 | (4669.15 4668.97) |
+| 2021-12-15 | (4709.84 4709.85) |
+| 2021-12-23 | (4725.78 4725.79) |
+| 2021-12-28 | (4786.36 4786.35) |
+| 2022-01-07 | (4677.02 4677.03) |
+| 2022-01-13 | (4659.02 4659.03) |
+| 2022-01-18 | (4577.34 4577.11) |
+| 2022-01-21 | (4397.93 4397.94) |
+| 2022-01-27 | (4326.5 4326.51)  |
+| 2022-02-02 | (4589.32 4589.38) |
+| 2022-02-04 | (4500.54 4500.53) |
+| 2022-02-10 | (4504.06 4504.08) |
+| 2022-02-22 | (4304.74 4304.76) |
+| 2022-02-25 | (4384.62 4384.65) |
+| 2022-02-28 | (4373.79 4373.94) |
+| 2022-03-08 | (4170.62 4170.7)  |
+| 2022-03-16 | (4357.95 4357.86) |
+| 2022-03-18 | (4463.09 4463.12) |
+| 2022-03-23 | (4456.23 4456.24) |
+| 2022-03-25 | (4543.04 4543.06) |
+| 2022-05-05 | (4152.38 4146.87) |
+| 2023-03-14 | (3920.56 3919.29) |
+
+*** trusting FRED in the union
+
+ #+begin_src haskell
+combinedPrices = Map.toList $ Map.union (Map.fromList fredPrices) pricesMap
+length combinedPrices
+#+end_src
+
+#+RESULTS:
+: 10898
+
+
+ #+begin_src haskell
+Map.size pricesMap
+ #+end_src
+
+#+RESULTS:
+: 10898
+
+ #+begin_src haskell
+Prelude.take 20 combinedPrices
+#+end_src
+
+#+RESULTS:
+| 1980-01-01 | 107.9 |
+| 1980-01-02 | 105.8 |
+| 1980-01-03 | 105.2 |
+| 1980-01-04 | 106.5 |
+| 1980-01-07 | 106.8 |
+| 1980-01-08 | 108.9 |
+| 1980-01-09 | 109.1 |
+| 1980-01-10 | 109.9 |
+| 1980-01-11 | 109.9 |
+| 1980-01-14 | 110.4 |
+| 1980-01-15 | 111.1 |
+| 1980-01-16 | 111.1 |
+| 1980-01-17 | 110.7 |
+| 1980-01-18 | 111.1 |
+| 1980-01-21 | 112.1 |
+| 1980-01-22 | 111.5 |
+| 1980-01-23 | 113.4 |
+| 1980-01-24 | 113.7 |
+| 1980-01-25 | 113.6 |
+| 1980-01-28 | 114.8 |
+
+Are the prices contiguous?

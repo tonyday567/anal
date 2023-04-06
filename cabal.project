@@ -1,0 +1,4 @@
+packages:
+  anal.cabal
+
+allow-newer: true
