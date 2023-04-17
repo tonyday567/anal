@@ -39,6 +39,7 @@ import qualified Data.Text as Text
 #+end_src
 
 #+RESULTS:
+: Ok, one module loaded.
 
 #+begin_src haskell
 r <- getReturns

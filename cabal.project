@@ -1,4 +1,6 @@
 packages:
   anal.cabal
-
-allow-newer: true
+  ../mealy/mealy.cabal
+  ../numhask/numhask.cabal
+  ../numhask-space/numhask-space.cabal
+  ../numhask-array/numhask-array.cabal
