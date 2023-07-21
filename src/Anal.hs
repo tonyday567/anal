@@ -1,3 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -8,9 +11,14 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
+{-# HLINT ignore "Redundant fromInteger" #-}
 
 module Anal where
 
+import Optics.Core
+import qualified Lucid as L
+import Web.Rep
+import GHC.OverloadedLabels
 import Control.Category (id)
 import Data.Bifunctor
 import qualified Data.ByteString as BS
@@ -23,9 +31,10 @@ import Data.Maybe
 import Data.Mealy
 import Data.Mealy.Quantiles
 import Data.Profunctor
-import Data.Text (Text, unpack)
+import Data.Text (Text, unpack, pack)
 import Data.Time.Calendar
 import Data.Time.Format.ISO8601
+import Data.Time
 import FlatParse.Basic
   ( Parser,
     Result (Err, Fail, OK),
@@ -42,7 +51,13 @@ import FlatParse.Basic
     (<|>),
   )
 import NumHask.Prelude hiding (id)
-import qualified Prelude
+import qualified Prelude as P
+import Chart.FlatParse
+import Prettychart
+import Chart
+import qualified Data.List as List
+import Control.Applicative (liftA2)
+import Control.Monad.State.Lazy
 
 -- $setup
 --
@@ -51,63 +66,6 @@ import qualified Prelude
 -- >>> import FlatParse.Basic
 -- >>> import Data.Time.Calendar
 -- >>> import Data.FormatN
-
--- | Parse a digit
-digit :: Parser a Int
-digit =
-  (\c -> ord c - ord '0') <$> satisfyAscii isDigit
-
--- | (unsigned) Int parser
---
--- >>> runParser int "69"
--- OK 69 ""
-int :: Parser a Int
-int = do
-  (place, n) <- chainr (\n (!place, !acc) -> (place * 10, acc + place * n)) digit (pure (1, 0))
-  case place of
-    1 -> empty
-    _ -> pure n
-
-digits :: Parser a (Int, Int)
-digits = chainr (\n (!place, !acc) -> (place * 10, acc + place * n)) digit (pure (1, 0))
-
--- | Parse a Double
--- >>> runParser double "1.234x"
--- OK 1.234 "x"
---
--- >>> runParser double "."
--- Fail
---
--- >>> runParser double "123"
--- OK 123.0 ""
---
--- >>> runParser double ".123"
--- OK 0.123 ""
---
--- >>> runParser double "123."
--- OK 123.0 ""
-double :: Parser a Double
-double = do
-  (placel, nl) <- digits
-  withOption
-    ($(char '.') *> digits)
-    ( \(placer, nr) ->
-        case (placel, placer) of
-          (1, 1) -> empty
-          _ -> pure $ fromIntegral nl + fromIntegral nr / fromIntegral placer
-    )
-    ( case placel of
-        1 -> empty
-        _ -> pure $ fromIntegral nl
-    )
-
--- | Parse a signed version of a number
---
--- >>> runParser (signed double) "-1.234x"
--- OK (-1.234) "x"
-signed :: (Ring b, FromInteger b) => Parser e b -> Parser e b
-signed p =
-  withOption $(char '-') (const (((-1) *) <$> p)) p
 
 -- | Day parser, consumes separator
 --
@@ -123,14 +81,12 @@ dayP = do
   pure $ fromGregorian (fromIntegral y) m d
 
 fredP :: Parser e (Day, Either () Double)
-fredP = (,) <$> dayP <*> (($(char ',')) *> ((Right <$> double) <|> (Left <$> $(char '.'))))
+fredP = (,) <$> dayP <*> (($(char ',')) *> (Right <$> double))
 
--- | run a Parser, Nothing on failure
-runParserMaybe :: Parser e a -> BS.ByteString -> Maybe a
-runParserMaybe p b = case runParser p b of
-  OK r _ -> Just r
-  Fail -> Nothing
-  Err _ -> Nothing
+runParserError :: Parser e a -> BS.ByteString -> a
+runParserError p bs = case runParser p bs of
+  OK r _ -> r
+  _ -> error "uncaught flatparse error"
 
 -- | Day parser, consumes separator
 --
@@ -151,17 +107,8 @@ quoted p = $(char '"') *> p <* $(char '"')
 numString :: Parser e String
 numString = filter (/= ',') <$> some (satisfy (\x -> isDigit x || (x == '.') || (x == ',')))
 
--- | Not great because will always succeed
-num :: Parser e (Maybe Double)
-num = runParserMaybe double . strToUtf8 . filter (/= ',') <$> numString
-
 auinvP :: Parser e (Day, String)
 auinvP = (,) <$> quoted dayP' <*> (($(char ',')) *> quoted numString)
-
--- return scan
-
-ret :: Mealy (Day, Double) (Day, Double)
-ret = second' ((\p p' -> log (p / p')) <$> id <*> delay1 undefined)
 
 getPricesFred :: IO [(Day, Double)]
 getPricesFred = do
@@ -188,26 +135,6 @@ getPrices = do
   pAuinv <- getPricesAuinvs
   pure $ Map.toList $ Map.union (Map.fromList pFred) (Map.fromList pAuinv)
 
--- difference mealy
-diff1 :: (a -> a -> b) -> a -> Mealy a b
-diff1 f a0 = f <$> id <*> delay1 a0
-
-count :: (Ord a) => [a] -> Map.Map a Int
-count = foldl' (\m k -> Map.insertWith (+) k 1 m) Map.empty
-
--- | Take the last n of a list.
-taker :: Int -> [a] -> [a]
-taker n = reverse . take n . reverse
-
-signalize :: Double -> [Double] -> Mealy Double Double
-signalize r qs' =
-  (\x -> fromIntegral x / fromIntegral (length qs' + 1)) <$> digitize r qs'
-
-defaultQuantiles :: [Double]
-defaultQuantiles = (0.1 *) <$> [1 .. 9]
-
-quantileNames :: [Double] -> [Text]
-quantileNames qs = (<> "th") . comma (Just 0) . (100 *) <$> qs
 
 getOriginalReturns :: IO [(Day, Double)]
 getOriginalReturns = do
@@ -227,11 +154,6 @@ writeReturns r =
       . bimap (formatShow iso8601Format) (fixed (Just 6))
       <$> r
 
-runParserError :: Parser e a -> BS.ByteString -> a
-runParserError p bs = case runParser p bs of
-  OK r _ -> r
-  _ -> undefined
-
 dayReturnP :: Parser e (Day, Double)
 dayReturnP = (,) <$> dayP <*> ($(char ',') *> signed double)
 
@@ -239,3 +161,193 @@ getReturns :: IO [(Day, Double)]
 getReturns = do
   bs <- BS.readFile "other/returns.csv"
   pure $ runParserError dayReturnP <$> C.lines bs
+
+-- return scan
+ret :: Mealy (Day, Double) (Day, Double)
+ret = second' ((\p p' -> log (p / p')) <$> id <*> delay1 undefined)
+
+-- difference mealy
+diff1 :: (a -> a -> b) -> a -> Mealy a b
+diff1 f a0 = f <$> id <*> delay1 a0
+
+count :: (Ord a) => [a] -> Map.Map a Int
+count = foldl' (\m k -> Map.insertWith (+) k 1 m) Map.empty
+
+sum' :: (Ord a) => [(a, Double)] -> Map.Map a Double
+sum' = foldl' (\m (k,v) -> Map.insertWith (+) k v m) Map.empty
+
+
+-- | Take the last n of a list.
+taker :: Int -> [a] -> [a]
+taker n = reverse . take n . reverse
+
+signalize :: Double -> [Double] -> Mealy Double Double
+signalize r qs' =
+  (\x -> fromIntegral x / fromIntegral (length qs' + 1)) <$> digitize r qs'
+
+defaultQuantiles :: [Double]
+defaultQuantiles = (0.1 *) <$> [1 .. 9]
+
+serve :: IO (ChartOptions -> IO Bool, IO ())
+serve = startChartServerWith defaultSocketConfig $
+  chartSocketPage & #htmlBody
+      .~ divClass_
+        "container"
+        ( mconcat
+            [ divClass_ "row" $ divClass_ "col" (L.with L.div_ [L.id_ "prettychart"] mempty)
+            ]
+        )
+
+accretChart :: [(Day, Double)] -> ChartOptions
+accretChart xs = mempty & #charts .~ named "line" [c] & #hudOptions .~ h :: ChartOptions
+  where
+  c = simpleLineChart 0.01 (palette1 2) (snd <$> xs)
+  xaxis = (Priority 5, timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> xs))
+  yaxis = (Priority 5, defaultAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
+  h = defaultHudOptions & #titles .~ [(Priority 8, defaultTitle "accumulated return" & set #place PlaceLeft & set (#style % #size) 0.06 & set #buffer 0.1 )] & #axes .~ [xaxis, yaxis] & #frames %~ (<>[(Priority 30, defaultFrameOptions & #buffer .~ 0.1)])
+
+quantileChart' :: Int -> [Double] -> [(Day, Double)] -> ChartOptions
+quantileChart' n qs r' = c'
+  where
+    qss = fmap (taker n) $ List.transpose $ scan (Data.Mealy.Quantiles.quantiles 0.99 qs) (snd <$> r')
+    c = quantileChart (quantileNames qs) ( blendMidLineStyles (length qss) 0.005 (Colour 0.7 0.1 0.3 0.5, Colour 0.1 0.4 0.8 1)) qss
+    xaxis = (Priority 5, timeXAxis 8 (taker n $ (\x -> UTCTime x (P.fromInteger 0)) . fst <$> r'))
+    yaxis = (Priority 5, defaultAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
+    c' = c & (#hudOptions % #axes) .~ [xaxis,yaxis]
+
+dayChart :: [Text] -> [(Day, [Double])] -> ChartOptions
+dayChart labels xs = mempty & #charts .~ named "day" cs & #hudOptions .~ h
+  where
+    cs = zipWith (\c xs' -> LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs']) (palette1 <$> [0..]) (List.transpose $ snd <$> xs)
+    xaxis = (Priority 5, timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> xs))
+    yaxis = (Priority 5, defaultAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
+    h = defaultHudOptions & #axes .~ [xaxis, yaxis] & #frames %~ (<>[(Priority 30, defaultFrameOptions & #buffer .~ 0.1)]) & #legends .~ leg
+    leg = [ ( Priority 12,
+              defaultLegendOptions
+                & over #frame (fmap (set #color white))
+                & set #place PlaceRight
+                & set (#textStyle % #size) 0.15
+                & set #content (zipWith (\t c -> (t, [c])) labels cs)
+            )
+          ]
+
+listify :: Mealy a b -> Mealy [a] [b]
+listify (M sExtract sStep sInject) = M extract step inject
+  where
+    extract = fmap sExtract
+    step = zipWith sStep
+    inject = fmap sInject
+
+-- | A chart drawing quantiles of a time series
+--
+-- ![digitChart example](other/digit.svg)
+digitCharts ::
+  [UTCTime] ->
+  [[Double]] ->
+  [Text] ->
+  [Text] ->
+  ChartOptions
+digitCharts utcs xss ylabels labels =
+  mempty & #charts .~ named "scatters" cs & #hudOptions .~ h
+  where
+    h =
+      defaultHudOptions
+        & #axes .~ [(Priority 5, timeXAxis 8 utcs), (Priority 5, decileYAxis ylabels)]
+        & #legends .~ leg
+    cs = zipWith (\c xs ->
+      GlyphChart
+        ( defaultGlyphStyle
+            & #color .~ palette1 c
+            & #shape .~ gpalette List.!! c
+            & #size .~ 0.01
+        )
+        (xify xs)) [0..] (List.transpose xss)
+    leg = [ ( Priority 12,
+              defaultLegendOptions
+                & over #frame (fmap (set #color white))
+                & set #place PlaceRight
+                & set (#textStyle % #size) 0.15
+                & set #content (zipWith (\t c -> (t, [c])) labels cs)
+            )
+          ]
+
+decileYAxis :: [Text] -> AxisOptions
+decileYAxis labels =
+  defaultAxisOptions
+    & #ticks % #style .~ TickPlaced (zip ((+ 0.5) <$> [0 ..]) labels)
+    & #ticks % #ltick .~ Nothing
+    & #ticks % #ttick %~ fmap (first (#size .~ 0.03))
+    & #place .~ PlaceLeft
+
+runHudCompound ::
+  -- | initial canvas
+  CanvasBox ->
+  -- | huds-chart tuples representing independent chart trees occupying the same canvas space
+  [([Hud], ChartTree)] ->
+  -- | integrated chart tree
+  ChartTree
+runHudCompound cb ts = mconcat $ zipWith (\i ct -> group (Just ("compound" <> pack (show i))) [ct]) [(0::Int)..] $ runHudCompoundWith cb ts'
+  where
+    ts' = zipWith (\db (hs,ct) -> (db,hs,ct)) dbs ts
+    dbs = singletonGuard . boxes . foldOf charts' . snd <$> ts
+
+-- | Combine a collection of chart trees that share a canvas box.
+runHudCompoundWith ::
+  -- | initial canvas
+  CanvasBox ->
+  -- | databox-huds-chart tuples representing independent chart trees occupying the same canvas space
+  [(DataBox, [Hud], ChartTree)] ->
+  -- | integrated chart trees
+  [ChartTree]
+runHudCompoundWith cb ts = zipWith mkTree [(0::Int)..] $ (\x -> x s) <$> zipWith (\cs db -> flip execState (HudChart (cs & over chart' (projectWith cb db)) mempty db)) (snd <$> css) (snd <$> dbs)
+  where
+    s =
+      hss
+      & List.sortOn (view #priority . snd)
+      & List.groupBy (\a b -> view #priority (snd a) == view #priority (snd b))
+      & fmap (closes . fmap (view #hud . snd))
+      & sequence
+    dbs = zip [(0::Int)..] $ fmap (\(x,_,_) -> x) ts
+    hss = mconcat $ fmap (\(i,xs) -> fmap (i,) xs) $ zip [(0::Int)..] (fmap (\(_,x,_) -> x) ts)
+    css = zip [(0::Int)..] (fmap (\(_,_,x) -> x) ts)
+    mkTree i hc = group (Just ("chart" <> pack (show i))) [view #chart hc] <> group (Just ("hud" <> pack (show i))) [view #hud hc]
+
+-- | Decorate a ChartTree with HudOptions
+addHudCompound :: [(HudOptions, ChartTree)] -> [ChartTree]
+addHudCompound [] = []
+addHudCompound ts@((ho0,cs0):_) =
+  runHudCompoundWith
+    (initialCanvas (view #chartAspect ho0) cs0)
+    (zip3 dbs hss css)
+  where
+    hss = fst <$> huds
+    dbs = snd <$> huds
+    css = (snd <$> ts) <> (blank <$> dbs)
+    huds = (\(ho, cs) -> toHuds ho (singletonGuard $ view box' cs)) <$> ts
+
+collapseCompound :: [ChartOptions] -> ChartOptions
+collapseCompound [] = mempty
+collapseCompound cs@(c0:_) = ChartOptions
+  (view #markupOptions c0)
+  (mempty & set #chartAspect (view (#hudOptions % #chartAspect) c0))
+  (group (Just "compound") $ addHudCompound (zip (view #hudOptions <$> cs) (view #charts <$> cs)))
+
+markupCompoundChartOptions :: [ChartOptions] -> Maybe Markup
+markupCompoundChartOptions [] = Nothing
+markupCompoundChartOptions cs@(co0:_) = Just $
+  header
+    (view (#markupOptions % #markupHeight) co0)
+    viewbox
+    ( [markupCssOptions (view (#markupOptions % #cssOptions) co0)]
+        <> mconcat (markupChartTree <$> csAndHuds)
+    )
+  where
+    viewbox = singletonGuard (foldRect $ mconcat $ maybeToList . view styleBox' <$> csAndHuds)
+    csAndHuds = addHudCompound (zip (view #hudOptions <$> cs) (view #charts <$> cs))
+
+encodeCompoundChartOptions :: [ChartOptions] -> C.ByteString
+encodeCompoundChartOptions cs =
+  maybe mempty encodeMarkup (markupCompoundChartOptions cs)
+
+writeCompoundChartOptions :: FilePath -> [ChartOptions] -> IO ()
+writeCompoundChartOptions fp cs = C.writeFile fp (encodeCompoundChartOptions cs)

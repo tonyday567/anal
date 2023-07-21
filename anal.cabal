@@ -1,6 +1,6 @@
 cabal-version: 2.4
 name:          anal
-version:       0.0.1
+version:       0.0.2
 synopsis: See readme.md
 description: See readme.md for description.
 category: project
@@ -49,6 +49,12 @@ library
     containers,
     formatn,
     text,
+    prettychart >= 0.1.1,
+    chart-svg,
+    optics-core,
+    web-rep,
+    lucid,
+    mtl,
   exposed-modules:
     Anal
 
