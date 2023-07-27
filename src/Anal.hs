@@ -1,63 +1,45 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE OverloadedLabels #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# HLINT ignore "Use <$>" #-}
 {-# LANGUAGE RebindableSyntax #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS_GHC -Wall #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
-{-# HLINT ignore "Redundant fromInteger" #-}
 
 module Anal where
 
-import Optics.Core
-import qualified Lucid as L
-import Web.Rep
-import GHC.OverloadedLabels
-import Control.Category (id)
+import Chart
+import Chart.FlatParse
+import Control.Monad.State.Lazy
 import Data.Bifunctor
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as C
-import Data.Char hiding (isDigit)
+import Data.ByteString qualified as BS
+import Data.ByteString.Char8 qualified as C
 import Data.Foldable
 import Data.FormatN
-import qualified Data.Map as Map
+import Data.List qualified as List
+import Data.Map qualified as Map
 import Data.Maybe
 import Data.Mealy
 import Data.Mealy.Quantiles
 import Data.Profunctor
-import Data.Text (Text, unpack, pack)
+import Data.Text (Text, pack, unpack)
+import Data.Time
 import Data.Time.Calendar
 import Data.Time.Format.ISO8601
-import Data.Time
 import FlatParse.Basic
   ( Parser,
-    Result (Err, Fail, OK),
-    chainr,
+    Result (OK),
     char,
-    empty,
     isDigit,
     runParser,
     satisfy,
-    satisfyAscii,
-    some,
     strToUtf8,
-    withOption,
-    (<|>),
   )
-import NumHask.Prelude hiding (id)
-import qualified Prelude as P
-import Chart.FlatParse
+import GHC.OverloadedLabels
+import Lucid qualified as L
+import NumHask.Prelude
+import Optics.Core
 import Prettychart
-import Chart
-import qualified Data.List as List
-import Control.Applicative (liftA2)
-import Control.Monad.State.Lazy
+import Web.Rep
+import Prelude qualified as P
 
 -- $setup
 --
@@ -135,7 +117,6 @@ getPrices = do
   pAuinv <- getPricesAuinvs
   pure $ Map.toList $ Map.union (Map.fromList pFred) (Map.fromList pAuinv)
 
-
 getOriginalReturns :: IO [(Day, Double)]
 getOriginalReturns = do
   p <- getPrices
@@ -174,8 +155,7 @@ count :: (Ord a) => [a] -> Map.Map a Int
 count = foldl' (\m k -> Map.insertWith (+) k 1 m) Map.empty
 
 sum' :: (Ord a) => [(a, Double)] -> Map.Map a Double
-sum' = foldl' (\m (k,v) -> Map.insertWith (+) k v m) Map.empty
-
+sum' = foldl' (\m (k, v) -> Map.insertWith (+) k v m) Map.empty
 
 -- | Take the last n of a list.
 taker :: Int -> [a] -> [a]
@@ -189,47 +169,50 @@ defaultQuantiles :: [Double]
 defaultQuantiles = (0.1 *) <$> [1 .. 9]
 
 serve :: IO (ChartOptions -> IO Bool, IO ())
-serve = startChartServerWith defaultSocketConfig $
-  chartSocketPage & #htmlBody
-      .~ divClass_
-        "container"
-        ( mconcat
-            [ divClass_ "row" $ divClass_ "col" (L.with L.div_ [L.id_ "prettychart"] mempty)
-            ]
-        )
+serve =
+  startChartServerWith defaultSocketConfig $
+    chartSocketPage
+      & #htmlBody
+        .~ divClass_
+          "container"
+          ( mconcat
+              [ divClass_ "row" $ divClass_ "col" (L.with L.div_ [L.id_ "prettychart"] mempty)
+              ]
+          )
 
 accretChart :: [(Day, Double)] -> ChartOptions
 accretChart xs = mempty & #charts .~ named "line" [c] & #hudOptions .~ h :: ChartOptions
   where
-  c = simpleLineChart 0.01 (palette1 2) (snd <$> xs)
-  xaxis = (Priority 5, timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> xs))
-  yaxis = (Priority 5, defaultAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
-  h = defaultHudOptions & #titles .~ [(Priority 8, defaultTitle "accumulated return" & set #place PlaceLeft & set (#style % #size) 0.06 & set #buffer 0.1 )] & #axes .~ [xaxis, yaxis] & #frames %~ (<>[(Priority 30, defaultFrameOptions & #buffer .~ 0.1)])
+    c = simpleLineChart 0.01 (palette1 2) (snd <$> xs)
+    xaxis = (Priority 5, timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> xs))
+    yaxis = (Priority 5, defaultAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
+    h = defaultHudOptions & #titles .~ [(Priority 8, defaultTitle "accumulated return" & set #place PlaceLeft & set (#style % #size) 0.06 & set #buffer 0.1)] & #axes .~ [xaxis, yaxis] & #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.1)])
 
 quantileChart' :: Int -> [Double] -> [(Day, Double)] -> ChartOptions
 quantileChart' n qs r' = c'
   where
     qss = fmap (taker n) $ List.transpose $ scan (Data.Mealy.Quantiles.quantiles 0.99 qs) (snd <$> r')
-    c = quantileChart (quantileNames qs) ( blendMidLineStyles (length qss) 0.005 (Colour 0.7 0.1 0.3 0.5, Colour 0.1 0.4 0.8 1)) qss
+    c = quantileChart (quantileNames qs) (blendMidLineStyles (length qss) 0.005 (Colour 0.7 0.1 0.3 0.5, Colour 0.1 0.4 0.8 1)) qss
     xaxis = (Priority 5, timeXAxis 8 (taker n $ (\x -> UTCTime x (P.fromInteger 0)) . fst <$> r'))
     yaxis = (Priority 5, defaultAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
-    c' = c & (#hudOptions % #axes) .~ [xaxis,yaxis]
+    c' = c & (#hudOptions % #axes) .~ [xaxis, yaxis]
 
 dayChart :: [Text] -> [(Day, [Double])] -> ChartOptions
 dayChart labels xs = mempty & #charts .~ named "day" cs & #hudOptions .~ h
   where
-    cs = zipWith (\c xs' -> LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs']) (palette1 <$> [0..]) (List.transpose $ snd <$> xs)
+    cs = zipWith (\c xs' -> LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs']) (palette1 <$> [0 ..]) (List.transpose $ snd <$> xs)
     xaxis = (Priority 5, timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> xs))
     yaxis = (Priority 5, defaultAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
-    h = defaultHudOptions & #axes .~ [xaxis, yaxis] & #frames %~ (<>[(Priority 30, defaultFrameOptions & #buffer .~ 0.1)]) & #legends .~ leg
-    leg = [ ( Priority 12,
-              defaultLegendOptions
-                & over #frame (fmap (set #color white))
-                & set #place PlaceRight
-                & set (#textStyle % #size) 0.15
-                & set #content (zipWith (\t c -> (t, [c])) labels cs)
-            )
-          ]
+    h = defaultHudOptions & #axes .~ [xaxis, yaxis] & #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.1)]) & #legends .~ leg
+    leg =
+      [ ( Priority 12,
+          defaultLegendOptions
+            & over #frame (fmap (set #color white))
+            & set #place PlaceRight
+            & set (#textStyle % #size) 0.15
+            & set #content (zipWith (\t c -> (t, [c])) labels cs)
+        )
+      ]
 
 listify :: Mealy a b -> Mealy [a] [b]
 listify (M sExtract sStep sInject) = M extract step inject
@@ -254,22 +237,28 @@ digitCharts utcs xss ylabels labels =
       defaultHudOptions
         & #axes .~ [(Priority 5, timeXAxis 8 utcs), (Priority 5, decileYAxis ylabels)]
         & #legends .~ leg
-    cs = zipWith (\c xs ->
-      GlyphChart
-        ( defaultGlyphStyle
-            & #color .~ palette1 c
-            & #shape .~ gpalette List.!! c
-            & #size .~ 0.01
+    cs =
+      zipWith
+        ( \c xs ->
+            GlyphChart
+              ( defaultGlyphStyle
+                  & #color .~ palette1 c
+                  & #shape .~ gpalette List.!! c
+                  & #size .~ 0.01
+              )
+              (xify xs)
         )
-        (xify xs)) [0..] (List.transpose xss)
-    leg = [ ( Priority 12,
-              defaultLegendOptions
-                & over #frame (fmap (set #color white))
-                & set #place PlaceRight
-                & set (#textStyle % #size) 0.15
-                & set #content (zipWith (\t c -> (t, [c])) labels cs)
-            )
-          ]
+        [0 ..]
+        (List.transpose xss)
+    leg =
+      [ ( Priority 12,
+          defaultLegendOptions
+            & over #frame (fmap (set #color white))
+            & set #place PlaceRight
+            & set (#textStyle % #size) 0.15
+            & set #content (zipWith (\t c -> (t, [c])) labels cs)
+        )
+      ]
 
 decileYAxis :: [Text] -> AxisOptions
 decileYAxis labels =
@@ -286,9 +275,9 @@ runHudCompound ::
   [([Hud], ChartTree)] ->
   -- | integrated chart tree
   ChartTree
-runHudCompound cb ts = mconcat $ zipWith (\i ct -> group (Just ("compound" <> pack (show i))) [ct]) [(0::Int)..] $ runHudCompoundWith cb ts'
+runHudCompound cb ts = mconcat $ zipWith (\i ct -> group (Just ("compound" <> pack (show i))) [ct]) [(0 :: Int) ..] $ runHudCompoundWith cb ts'
   where
-    ts' = zipWith (\db (hs,ct) -> (db,hs,ct)) dbs ts
+    ts' = zipWith (\db (hs, ct) -> (db, hs, ct)) dbs ts
     dbs = singletonGuard . boxes . foldOf charts' . snd <$> ts
 
 -- | Combine a collection of chart trees that share a canvas box.
@@ -299,23 +288,23 @@ runHudCompoundWith ::
   [(DataBox, [Hud], ChartTree)] ->
   -- | integrated chart trees
   [ChartTree]
-runHudCompoundWith cb ts = zipWith mkTree [(0::Int)..] $ (\x -> x s) <$> zipWith (\cs db -> flip execState (HudChart (cs & over chart' (projectWith cb db)) mempty db)) (snd <$> css) (snd <$> dbs)
+runHudCompoundWith cb ts = zipWith mkTree [(0 :: Int) ..] $ (\x -> x s) <$> zipWith (\cs db -> flip execState (HudChart (cs & over chart' (projectWith cb db)) mempty db)) (snd <$> css) (snd <$> dbs)
   where
     s =
       hss
-      & List.sortOn (view #priority . snd)
-      & List.groupBy (\a b -> view #priority (snd a) == view #priority (snd b))
-      & fmap (closes . fmap (view #hud . snd))
-      & sequence
-    dbs = zip [(0::Int)..] $ fmap (\(x,_,_) -> x) ts
-    hss = mconcat $ fmap (\(i,xs) -> fmap (i,) xs) $ zip [(0::Int)..] (fmap (\(_,x,_) -> x) ts)
-    css = zip [(0::Int)..] (fmap (\(_,_,x) -> x) ts)
+        & List.sortOn (view #priority . snd)
+        & List.groupBy (\a b -> view #priority (snd a) == view #priority (snd b))
+        & fmap (closes . fmap (view #hud . snd))
+        & sequence
+    dbs = zip [(0 :: Int) ..] $ fmap (\(x, _, _) -> x) ts
+    hss = mconcat $ fmap (\(i, xs) -> fmap (i,) xs) $ zip [(0 :: Int) ..] (fmap (\(_, x, _) -> x) ts)
+    css = zip [(0 :: Int) ..] (fmap (\(_, _, x) -> x) ts)
     mkTree i hc = group (Just ("chart" <> pack (show i))) [view #chart hc] <> group (Just ("hud" <> pack (show i))) [view #hud hc]
 
 -- | Decorate a ChartTree with HudOptions
 addHudCompound :: [(HudOptions, ChartTree)] -> [ChartTree]
 addHudCompound [] = []
-addHudCompound ts@((ho0,cs0):_) =
+addHudCompound ts@((ho0, cs0) : _) =
   runHudCompoundWith
     (initialCanvas (view #chartAspect ho0) cs0)
     (zip3 dbs hss css)
@@ -327,20 +316,22 @@ addHudCompound ts@((ho0,cs0):_) =
 
 collapseCompound :: [ChartOptions] -> ChartOptions
 collapseCompound [] = mempty
-collapseCompound cs@(c0:_) = ChartOptions
-  (view #markupOptions c0)
-  (mempty & set #chartAspect (view (#hudOptions % #chartAspect) c0))
-  (group (Just "compound") $ addHudCompound (zip (view #hudOptions <$> cs) (view #charts <$> cs)))
+collapseCompound cs@(c0 : _) =
+  ChartOptions
+    (view #markupOptions c0)
+    (mempty & set #chartAspect (view (#hudOptions % #chartAspect) c0))
+    (group (Just "compound") $ addHudCompound (zip (view #hudOptions <$> cs) (view #charts <$> cs)))
 
 markupCompoundChartOptions :: [ChartOptions] -> Maybe Markup
 markupCompoundChartOptions [] = Nothing
-markupCompoundChartOptions cs@(co0:_) = Just $
-  header
-    (view (#markupOptions % #markupHeight) co0)
-    viewbox
-    ( [markupCssOptions (view (#markupOptions % #cssOptions) co0)]
-        <> mconcat (markupChartTree <$> csAndHuds)
-    )
+markupCompoundChartOptions cs@(co0 : _) =
+  Just $
+    header
+      (view (#markupOptions % #markupHeight) co0)
+      viewbox
+      ( [markupCssOptions (view (#markupOptions % #cssOptions) co0)]
+          <> mconcat (markupChartTree <$> csAndHuds)
+      )
   where
     viewbox = singletonGuard (foldRect $ mconcat $ maybeToList . view styleBox' <$> csAndHuds)
     csAndHuds = addHudCompound (zip (view #hudOptions <$> cs) (view #charts <$> cs))
