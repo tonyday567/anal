@@ -28,7 +28,6 @@ import Data.Profunctor
 import Data.Maybe
 import Data.Bifunctor
 import NumHask.Prelude
-import NumHask.Space
 import qualified Data.Map as Map
 import Data.FormatN
 import qualified Data.Text as Text
@@ -180,10 +179,6 @@ disp c
 
 #+RESULTS:
 : True
-
-- [ ] compound chart
-  - [ ] displayCompound
-
 
 * Low-level Data Checks
 
