@@ -132,54 +132,6 @@ writeChartOptions "other/mvmd.svg" mvmdChart
 #+RESULTS:
 [[file:other/mvmd.svg]]
 
-*** ToDo Using median versus mean as a trading signal
-***** Yesterday's signal & Today's return
-
-#+begin_src haskell :results output
-n = 1000
-pren = 1000
-qs = [0.1,0.5,0.9]
--- qs = [0.2,0.4,0.6,0.8]
-mvmRaw = (\a b -> b-a) <$> median 0.99 <*> ma 0.99
-mvmDigit = mvmRaw >>> digitize 0.996 qs >>> delay1 100
-d = drop pren $ scan (second' ((,) <$> Control.Category.id <*> mvmDigit)) $ taker (n+pren) r
-take 10 d
-#+end_src
-
-#+RESULTS:
-: [(2019-03-29,(6.712e-3,1)),(2019-04-01,(1.1502e-2,2)),(2019-04-02,(1.7e-5,3)),(2019-04-03,(2.146e-3,3)),(2019-04-04,(2.082e-3,2)),(2019-04-05,(4.626e-3,2)),(2019-04-08,(1.047e-3,2)),(2019-04-09,(-6.086e-3,2)),(2019-04-10,(3.472e-3,2)),(2019-04-11,(3.8e-5,1))]
-
-***** Bucketing the returns
-
-#+begin_src haskell :results output
-bucketSum = foldl' (\m (k,v) -> Map.insertWith (+) k v m) Map.empty
-sr = (\(x,y) -> (y,x)) . snd <$> (drop pren $ scan (second' ((,) <$> Control.Category.id <*> mvmDigit)) $ taker (n+pren) r)
-#+end_src
-
-#+RESULTS:
-
-#+begin_src haskell :results output
-bucketSum sr
-NumHask.Prelude.sum $ snd <$> (Map.toList $ bucketSum sr)
-NumHask.Prelude.sum (snd <$> (drop pren $ taker (pren+n) r))
-#+end_src
-
-#+RESULTS:
-: fromList [(0,0.272609),(1,-0.14383900000000005),(2,0.32524200000000025),(3,-0.12390499999999999)]
-: 0.3301070000000002
-: 0.33010700000000015
-
-***** chart of mvm quantiles
-
-#+begin_src haskell :results output
-dates = ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> (drop pren $ taker (pren+n) r))
-c = digitChart dates (fromIntegral . fst <$> sr) (quantileNames qs)
-disp c
-#+end_src
-
-#+RESULTS:
-: True
-
 * Low-level Data Checks
 
 ** returns
