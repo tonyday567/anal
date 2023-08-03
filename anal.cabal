@@ -3,6 +3,8 @@ name: anal
 version: 0.0.2
 license: BSD-3-Clause
 license-file: LICENSE
+copyright: Tony Day (c) 2023
+category: project
 author: Tony Day
 maintainer: tonyday567@gmail.com
 homepage: https://github.com/tonyday567/anal#readme
