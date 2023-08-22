@@ -1,4 +1,7 @@
 packages:
   anal.cabal
-
-allow-newer: clay:base
+  ../mealy/mealy.cabal
+  ../markup-parse/markup-parse.cabal
+  ../chart-svg/chart-svg.cabal
+  ../web-rep/web-rep.cabal
+  ../prettychart/prettychart.cabal
