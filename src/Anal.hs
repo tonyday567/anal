@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RebindableSyntax #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
 module Anal where
@@ -46,29 +45,33 @@ sigRet sig qs r = (,) <$> id <*> (sig >>> digitize r qs >>> delay1 0)
 
 -- | mealy scan, dropping the first r scans
 scanRet :: Mealy a b -> Int -> Int -> [(c, a)] -> [(c, b)]
-scanRet m n r rs = drop r $ scan (second' m) $ taker (n+r) rs
+scanRet m n r rs = drop r $ scan (second' m) $ taker (n + r) rs
 
 -- | Accumulate the return for n buckets based on a digitized signal
 accRetDigits :: Mealy (Double, Int) (Map.Map Int Double)
-accRetDigits = M (\(v,k) -> Map.singleton k v) (\m (v,k) -> Map.insertWith (+) k v m) id
+accRetDigits = M (\(v, k) -> Map.singleton k v) (\m (v, k) -> Map.insertWith (+) k v m) id
 
-ardList :: Int -> (Map.Map Int Double) -> [Double]
-ardList n m = fromMaybe zero . (flip Map.lookup m) <$> [0..(n-1)]
+ardList :: Int -> Map.Map Int Double -> [Double]
+ardList n m = fromMaybe zero . flip Map.lookup m <$> [0 .. (n - 1)]
 
 qRangeLabel :: [Double] -> [Text]
-qRangeLabel = fold
-  (M
-  (\a -> (a,["< " <> (pack $ show a)]))
-  (\(x,labels) this -> (this, labels <> [pack (show x) <> " < x < " <> pack (show this)]))
-  (\(x, labels) -> labels <> ["> " <> (pack $ show x)]))
+qRangeLabel =
+  fold
+    ( M
+        (\a -> (a, ["< " <> (pack $ show a)]))
+        (\(x, labels) this -> (this, labels <> [pack (show x) <> " < x < " <> pack (show this)]))
+        (\(x, labels) -> labels <> ["> " <> (pack $ show x)])
+    )
 
 serve :: IO (ChartOptions -> IO Bool, IO ())
 serve =
   startChartServerWith defaultSocketConfig $
-    chartSocketPage
+    chartSocketPage Nothing
       & #htmlBody
-        .~ element "div" [Attr "class" "container"]
-          (element "div" [Attr "class" "row"] $ element "div" [Attr "class" "col"] (element_ "div" [Attr "id" "prettychart"])
+        .~ element
+          "div"
+          [Attr "class" "container"]
+          ( element "div" [Attr "class" "row"] $ element "div" [Attr "class" "col"] (element_ "div" [Attr "id" "prettychart"])
           )
 
 dayChart :: [Text] -> [(Day, [Double])] -> ChartOptions
@@ -174,4 +177,3 @@ encodeCompoundChartOptions cs =
 
 writeCompoundChartOptions :: FilePath -> [ChartOptions] -> IO ()
 writeCompoundChartOptions fp cs = C.writeFile fp (encodeCompoundChartOptions cs)
-

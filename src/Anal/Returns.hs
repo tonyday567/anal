@@ -7,8 +7,6 @@
 module Anal.Returns where
 
 import Chart
-import MarkupParse
-import MarkupParse.FlatParse
 import Data.Bifunctor
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as C
@@ -24,7 +22,9 @@ import FlatParse.Basic
     isDigit,
     satisfy,
   )
-import NumHask.Prelude hiding (fold, diff)
+import MarkupParse
+import MarkupParse.FlatParse
+import NumHask.Prelude hiding (diff, fold)
 
 -- $setup
 --
