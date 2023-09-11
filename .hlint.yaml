@@ -3,6 +3,7 @@
 - ignore: {name: Use head}
 - ignore: {name: Use <$>}
 - ignore: {name: Use mapM}
+- ignore: {name: Use foldMap}
 - ignore: {name: Redundant fromInteger}
 - ignore: {name: Use first}
 - ignore: {name: 'Use ?~'}

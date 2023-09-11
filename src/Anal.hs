@@ -41,7 +41,7 @@ taker n = reverse . take n . reverse
 sigRet :: Mealy a Double -> [Double] -> Double -> Mealy a (a, Int)
 sigRet sig qs r = (,) <$> id <*> (sig >>> digitize r qs >>> delay1 0)
 
--- | mealy scan, dropping the first r scans
+-- | mealy scan of a Day, Return tuple, dropping the first r scans
 scanRet :: Mealy a b -> Int -> Int -> [(c, a)] -> [(c, b)]
 scanRet m n r rs = drop r $ scan (second' m) $ taker (n + r) rs
 
@@ -89,6 +89,25 @@ dayChart labels xs = mempty & #charts .~ named "day" cs & #hudOptions .~ h
         )
       ]
 
+dayAxis :: [Day] -> (Priority, AxisOptions)
+dayAxis ds = (Priority 5, timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) <$> ds))
+
+-- | legend constructed from different charts
+leg' :: [Text] -> [Chart] -> ChartOptions
+leg' labels cs = mempty & #hudOptions % #legends .~
+      [ ( Priority 12,
+          defaultLegendOptions
+            & over #frame (fmap (set #color white))
+            & set #place PlaceRight
+            & set (#textStyle % #size) 0.15
+            & set #legendCharts (zipWith (\t c -> (t, [c])) labels cs)
+        )
+      ]
+
+-- | line chart with vertical axis, no guideline ticks
+lchart ::  Maybe Place -> Colour -> [Double] -> ChartOptions
+lchart p c xs = mempty & #charts .~ unnamed [LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs]] & #hudOptions % #axes .~ maybe [] (\p' -> [(Priority 5, defaultAxisOptions & #place .~ p' & #ticks % #ltick .~ Nothing & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)]) p & #hudOptions %~ colourHudOptions (const c)
+
 -- | modification of prettychart quantileChart.
 quantileChart' :: Int -> [Double] -> [(Day, Double)] -> ChartOptions
 quantileChart' n qs r' = c'
@@ -99,3 +118,17 @@ quantileChart' n qs r' = c'
     yaxis = (Priority 5, defaultAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
     c' = c & (#hudOptions % #axes) .~ [xaxis, yaxis]
 
+-- helpers
+toCT :: ChartOptions -> ChartTree
+toCT co = addHud (view #hudOptions co) (view #charts co)
+
+accret :: [(Day, Double)] -> [(Day, Double)]
+accret r = scan (second' (dipure (+))) r
+
+rebase :: Int -> Int -> [Double] -> [Double]
+rebase n n' xs = fmap (/head xs') xs'
+  where
+    xs' = reindex n n' id xs
+
+reindex :: Int -> Int -> ([a] -> [b]) -> [a] -> [b]
+reindex n n' f xs = drop n' $ f $ taker (n+n') xs

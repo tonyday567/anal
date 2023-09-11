@@ -30,7 +30,6 @@ import Data.Maybe
 import Data.Bifunctor
 import NumHask.Prelude hiding (fold)
 import qualified Data.Map as Map
-import Data.FormatN
 import qualified Data.Text as Text
 import Prettychart
 import Chart
@@ -39,6 +38,7 @@ import GHC.OverloadedLabels
 import Optics.Core
 import Control.Category ((>>>))
 import Control.Applicative
+import Chart.Compound
 print "imports loaded"
 r <- getReturns
 length r
@@ -47,27 +47,11 @@ disp x = display $ x & set (#markupOptions % #markupHeight) 250 & set (#hudOptio
 #+end_src
 
 #+RESULTS:
-#+begin_example
-Preprocessing library for anal-0.0.2..
-GHCi, version 9.6.2: https://www.haskell.org/ghc/  :? for help
-[1 of 2] Compiling Anal             ( src/Anal.hs, interpreted )
-
-src/Anal.hs:83:5: warning: [GHC-63397] [-Wname-shadowing]
-    This binding for ‘qRangeLabel’ shadows the existing binding
-      defined at src/Anal.hs:110:1
-   |
-83 |     qRangeLabel = fold
-   |     ^^^^^^^^^^^
-[2 of 2] Compiling Anal.Returns     ( src/Anal/Returns.hs, interpreted )
-Ok, two modules loaded.
-ghci
-Ok, two modules loaded.
-ghci
-imports loaded
-10897
-Setting phasers
-to stun... (port 9160) (ctrl-c to quit)
-#+end_example
+: Ok, two modules loaded.
+: ghci
+: imports loaded
+: 10897
+: Setting phasers to stun... (p>o rt 9160) (ctrl-c to quit)
 
 * analysis
 *** Accumulated return
@@ -80,7 +64,6 @@ rs = snd <$> r
 xma = scan (ma decay) rs
 xstd = scan (std decay) rs
 disp $ dayChart ["accumulated return"] (fmap (second (:[])) (taker 200 accret))
-
 #+end_src
 
 #+RESULTS:
@@ -160,9 +143,226 @@ ndrop = 0
 mvmRaw = (\a b -> a-b) <$> median 0.99 <*> ma 0.99
 qs = [0.1,0.4,0.5,0.6,0.9]
 c = dayChart (qRangeLabel qs) (scanRet (fmap (ardList 6) (sigRet mvmRaw qs 0.996 >>> accRetDigits)) n ndrop r)
+c = c & #markupOptions % renderStyle .~ Indented 4
 writeChartOptions "other/arc.svg" c
 disp c
 #+end_src
 
 #+RESULTS:
 [[file:other/arc.svg]]
+* standard deviation
+** working
+
+#+begin_src haskell :file other/sd.svg :results output graphics file :exports both
+accret = scan (second' (dipure (+))) r
+rebase xs = zip (fst <$> xs) (fmap (/head (snd <$> xs)) (snd <$> xs))
+
+accChart = dayChart ["accumulated return"] (fmap (second (:[])) (rebase $ drop dropN $ taker (n+dropN) accret)) & set (#hudOptions % #legends) []
+accChart' = accChart & over (#hudOptions % #axes) (fmap (second (set ( #ticks % #ltick ) Nothing))) & over (#charts % charts') (fmap (colourChart (const (palette1 2)))) & set (#hudOptions % #legends) []
+
+sdChart = dayChart ["std"] $ second (:[]) <$> scanRet (std decay) n dropN r
+sdChart' = sdChart & #hudOptions .~ (mempty & #axes .~ (view (#hudOptions % #axes) sdChart & (\x -> (List.!!) x 1) & second (set #place PlaceRight) & (:[]))) & over (#hudOptions % #axes) (fmap (second (set ( #ticks % #ltick ) Nothing)))
+
+compChart = compoundMerge [accChart', sdChart']
+compChart' = compChart & set (#hudOptions % #legends) [(Priority 20,defaultLegendOptions & set #legendCharts (zipWith (\t co -> (t, foldOf (#charts % charts') co)) ["return", "sd"] [accChart', sdChart']))]
+writeChartOptions "other/sd.svg" compChart'
+
+disp compChart'
+#+end_src
+
+#+RESULTS:
+[[file:other/sd.svg]]
+
+** gradient of sd
+
+#+begin_src haskell :results output
+stdBeta = dayChart ["std"] $ second (:[]) <$> scanRet (second' (std decayStd) >>> beta1 (ma decayBeta1)) n dropN (zip (fst <$> r) (zip [0..] (snd <$> r)))
+stdBeta' = stdBeta & over (#hudOptions % #axes) (fmap (second (set ( #ticks % #ltick ) Nothing))) & over (#charts % charts') (fmap (colourChart (const (palette1 2))))  & set (#hudOptions % #legends) []
+
+betaSdChart = compoundMerge [sdChart', stdBeta']
+betaSdChart' = betaSdChart & set (#hudOptions % #legends) [(Priority 20,defaultLegendOptions & set #legendCharts (zipWith (\t co -> (t, foldOf (#charts % charts') co)) ["beta of sd", "sd"] [stdBeta', sdChart']))]
+disp betaSdChart'
+#+end_src
+
+#+RESULTS:
+: >
+: True
+
+*** digitize beta
+
+#+begin_src haskell :results output
+qs = [0.2,0.4,0.6,0.8]
+qBeta = (second' (std d) >>> beta1 (ma 0.95)) >>> digitize 0.996 qs
+:t qBeta
+d = drop dropN $ scan (second' qBeta) (taker (n+dropN) $ (zip (fst <$> r) (zip [0..] (snd <$> r))))
+betaSdDigitChart = digitChart ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> d) (fromIntegral . snd <$> d) (quantileNames qs)
+disp betaSdDigitChart
+#+end_src
+
+#+RESULTS:
+: qBeta :: Mealy (Double, Double) Int
+: True
+
+
+
+#+begin_src haskell :results output
+:t d
+#+end_src
+
+#+RESULTS:
+: d :: [(Day, Int)]
+
+
+Skew away from upper quantiles
+
+#+begin_src haskell :results output
+Data.Mealy.fold countM (snd <$> d)
+#+end_src
+
+#+RESULTS:
+: fromList [(0,892),(1,813),(2,1191),(3,1072),(4,1032)]
+
+#+begin_src haskell :results output graphics file :exports both
+acc = dayChartRhs (fmap (second (:[])) (rebase $ drop dropN $ taker (n+dropN) accret))
+acc' = acc & over (#hudOptions % #axes) (fmap (second (set ( #ticks % #ltick ) Nothing))) & over (#charts % charts') (fmap (colourChart (const (palette1 4))))
+c = dayChart (qRangeLabel qs) (scanRet (fmap (ardList 6) (sigRet mvmRaw qs 0.996 >>> accRetDigits)) n ndrop r)
+
+disp $ compoundMerge [c, acc']
+#+end_src
+
+#+begin_src haskell :results output
+:t d
+#+end_src
+
+#+RESULTS:
+: d :: [(Day, Int)]
+
+#+begin_src haskell :results output
+n = 2000
+dropN = 100
+qs = [0.1, 0.9] :: [Double]
+decayStd = 0.95
+decayBeta1 = 0.95
+decayQ = 0.95
+qBeta' = (first snd) <$> ((,) <$> id <*> (second' (std decayStd) >>> beta1 (ma decayBeta1) >>> digitize decayQ qs >>> delay1 0))
+buckets = fmap (ardList ((length qs :: Int) + 1)) (qBeta' >>> accRetDigits)
+xs = (drop dropN $ scan (second' buckets) (taker (n+dropN) $ (zip (fst <$> r) (zip [0..] (snd <$> r)))))
+bucketChart = dayChart (qRangeLabel qs) xs
+disp bucketChart
+#+end_src
+
+#+RESULTS:
+: > True
+
+
+*** vert
+
+#+begin_src haskell :results output
+:t stack 2 0.1
+:t c
+:t stack 2 0.1 [(\c -> addHud (view #hudOptions c) (view #charts c)) c]
+#+end_src
+
+#+RESULTS:
+: stack 2 0.1 :: [ChartTree] -> ChartTree
+: c :: ChartOptions
+: stack 2 0.1 [(\c -> addHud (view #hudOptions c) (view #charts c)) c]
+:   :: ChartTree
+
+#+begin_src haskell :results output
+qBeta = (second' (std decayStd) >>> beta1 (ma decayBeta1)) >>> digitize decayQ qs
+d = drop dropN $ scan (second' qBeta) (taker (n+dropN) $ (zip (fst <$> r) (zip [0..] (snd <$> r))))
+betaSdDigitChart = digitChart ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> d) (fromIntegral . snd <$> d) (quantileNames qs)
+disp betaSdDigitChart
+#+end_src
+
+#+RESULTS:
+: True
+
+
+#+begin_src haskell :results output
+toCT co = addHud (view #hudOptions co) (view #charts co)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell :results output
+disp $ mempty & #charts .~ stack 2 0.1 [toCT bucketChart, toCT compChart', toCT betaSdDigitChart, toCT betaSdChart', toCT decayChart]
+#+end_src
+
+#+RESULTS:
+: <interactive>:156:64: error: [GHC-88464]
+:     Variable not in scope: compChart'
+:
+: <interactive>:156:81: error: [GHC-88464]
+:     Variable not in scope: betaSdDigitChart
+:
+: <interactive>:156:104: error: [GHC-88464]
+:     Variable not in scope: betaSdChart'
+
+#+begin_src haskell :results output
+ts = pack <$> ["std decay = " <> show decayStd, "beta1 decay = " <> show decayBeta1, "quantile decay = " <> show decayQ]
+s = defaultTextStyle & #anchor .~ AnchorStart
+ts' = [TextChart s (zipWith (\t x -> (t, Point 0 x)) ts [0..])]
+decayChart = mempty & #charts .~ unnamed (ts' <> [padChart 0.2 ts']) :: ChartOptions
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell :results output
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell :results output
+styleBoxes ts'
+#+end_src
+
+#+RESULTS:
+: Just Rect -0.432 2.567 -3.6000000000000004e-2 2.096
+
+* Next all in one
+
+#+begin_src haskell :results output
+-- parameters
+n = 2000
+dropN = 100
+qs = [0.1, 0.5, 0.8] :: [Double]
+decayStd = 0.95
+decayBeta1 = 0.99
+decayQ = 0.996
+ri = zip [0..] (snd <$> r)
+days = reindex n dropN id (fst <$> r)
+
+accChart = lchart Nothing (palette1 0) (rebase n dropN (scan (dipure (+)) (snd <$> r)))
+
+finishHud = #axes %~ (<> [dayAxis days]) >>> #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.1)]) :: HudOptions -> HudOptions
+
+sdChart = lchart (Just PlaceLeft) (palette1 1) (reindex n dropN (scan (std decayStd)) (snd <$> r))
+
+betaChart = lchart (Just PlaceRight) (palette1 2) (reindex n dropN (scan (second' (std decayStd) >>> beta1 (ma decayBeta1))) ri)
+
+qBeta = (second' (std decayStd) >>> beta1 (ma decayBeta1)) >>> digitize decayQ qs
+rDigit = reindex n dropN (scan qBeta) ri
+qBetaChart = digitChart ((\x -> UTCTime x (P.fromInteger 0)) <$> days) (fromIntegral <$> rDigit) (quantileNames qs)
+
+sdCharts = compoundMerge [sdChart,betaChart, accChart & #hudOptions %~ finishHud]
+
+cs = Data.Mealy.fold countM (rDigit)
+qCountChart = barChart defaultBarOptions (BarData [fromIntegral <$> toList cs] (qRangeLabel qs) []) & #hudOptions % #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.2)]) & #hudOptions % #titles %~ (<> [(Priority 10, defaultTitle "quantile counts" & #buffer .~ 0.2 & #style % #color .~ palette1a 1 1)])
+
+qBeta' = (first snd) <$> ((,) <$> id <*> (second' (std decayStd) >>> beta1 (ma decayBeta1) >>> digitize decayQ qs >>> delay1 0))
+buckets = fmap (ardList ((length qs :: Int) + 1)) (qBeta' >>> accRetDigits)
+xs = (drop dropN $ scan (second' buckets) (taker (n+dropN) $ (zip (fst <$> r) (zip [0..] (snd <$> r)))))
+bucketChart = dayChart (qRangeLabel qs) xs
+
+ts = pack <$> reverse ["std decay = " <> show decayStd, "beta1 decay = " <> show decayBeta1, "quantile decay = " <> show decayQ, "quantiles = " <> show qs]
+s = defaultTextStyle & #anchor .~ AnchorStart
+ts' = [TextChart s (zipWith (\t x -> (t, Point 0 x)) ts [0..])]
+decayChart = mempty & #charts .~ unnamed (ts' <> [padChart 0.2 ts']) :: ChartOptions
+
+disp $ mempty & #charts .~ stack 2 0.1 (reverse [toCT sdCharts, toCT qBetaChart, toCT qCountChart, toCT bucketChart, toCT decayChart])
+#+end_src
+
+#+RESULTS:
+: True
