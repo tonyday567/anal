@@ -19,6 +19,7 @@ analysis: the prefix
 :set -XTupleSections
 import Anal
 import Anal.Returns
+import Control.Monad
 import qualified FlatParse.Basic as FP
 import Data.Time
 import Data.Time.Calendar
@@ -39,6 +40,7 @@ import Optics.Core
 import Control.Category ((>>>))
 import Control.Applicative
 import Chart.Compound
+import Faker.Lorem
 print "imports loaded"
 r <- getReturns
 length r
@@ -47,11 +49,14 @@ disp x = display $ x & set (#markupOptions % #markupHeight) 250 & set (#hudOptio
 #+end_src
 
 #+RESULTS:
+: [1 of 2] Compiling Anal             ( src/Anal.hs, interpreted )
+: [2 of 2] Compiling Anal.Returns     ( src/Anal/Returns.hs, interpreted )
 : Ok, two modules loaded.
-: ghci
+: ghci> Ok, two modules loaded.
+: >
 : imports loaded
 : 10897
-: Setting phasers to stun... (p>o rt 9160) (ctrl-c to quit)
+: Setting phasers to stun... (port 9160) (ctrl-c to quit>)
 
 * analysis
 *** Accumulated return
@@ -323,6 +328,13 @@ styleBoxes ts'
 
 * Next all in one
 
+- [ ] combine digit chart with digit accumulation
+- [ ] ticks not scaling and fuzzy
+- [ ] better order of stack
+- [ ] smaller text chart
+- [ ] bar chart labels too close
+- [ ] better axis placement when multiple axis marks on one side
+
 #+begin_src haskell :results output
 -- parameters
 n = 2000
@@ -342,27 +354,128 @@ sdChart = lchart (Just PlaceLeft) (palette1 1) (reindex n dropN (scan (std decay
 
 betaChart = lchart (Just PlaceRight) (palette1 2) (reindex n dropN (scan (second' (std decayStd) >>> beta1 (ma decayBeta1))) ri)
 
-qBeta = (second' (std decayStd) >>> beta1 (ma decayBeta1)) >>> digitize decayQ qs
-rDigit = reindex n dropN (scan qBeta) ri
-qBetaChart = digitChart ((\x -> UTCTime x (P.fromInteger 0)) <$> days) (fromIntegral <$> rDigit) (quantileNames qs)
 
 sdCharts = compoundMerge [sdChart,betaChart, accChart & #hudOptions %~ finishHud]
 
+qBeta = (second' (std decayStd) >>> beta1 (ma decayBeta1)) >>> digitize decayQ qs
+rDigit = reindex n dropN (scan qBeta) ri
 cs = Data.Mealy.fold countM (rDigit)
 qCountChart = barChart defaultBarOptions (BarData [fromIntegral <$> toList cs] (qRangeLabel qs) []) & #hudOptions % #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.2)]) & #hudOptions % #titles %~ (<> [(Priority 10, defaultTitle "quantile counts" & #buffer .~ 0.2 & #style % #color .~ palette1a 1 1)])
+
+qBetaChart = digitChart ((\x -> UTCTime x (P.fromInteger 0)) <$> days) (fromIntegral <$> rDigit) (quantileNames qs) & #hudOptions % #axes .~ []
 
 qBeta' = (first snd) <$> ((,) <$> id <*> (second' (std decayStd) >>> beta1 (ma decayBeta1) >>> digitize decayQ qs >>> delay1 0))
 buckets = fmap (ardList ((length qs :: Int) + 1)) (qBeta' >>> accRetDigits)
 xs = (drop dropN $ scan (second' buckets) (taker (n+dropN) $ (zip (fst <$> r) (zip [0..] (snd <$> r)))))
 bucketChart = dayChart (qRangeLabel qs) xs
 
+accBucketChart = compoundMerge [qBetaChart, bucketChart]
+
+
 ts = pack <$> reverse ["std decay = " <> show decayStd, "beta1 decay = " <> show decayBeta1, "quantile decay = " <> show decayQ, "quantiles = " <> show qs]
 s = defaultTextStyle & #anchor .~ AnchorStart
-ts' = [TextChart s (zipWith (\t x -> (t, Point 0 x)) ts [0..])]
-decayChart = mempty & #charts .~ unnamed (ts' <> [padChart 0.2 ts']) :: ChartOptions
+ts' = zipWith (\t x -> TextChart s [(t, Point 0 x)]) ts [0..]
+decayChart = (mempty::ChartOptions) & (#hudOptions % #frames .~ [(Priority 30, FrameOptions (Just defaultRectStyle) 0.0)]) & (#charts .~ unnamed ts')
 
-disp $ mempty & #charts .~ stack 2 0.1 (reverse [toCT sdCharts, toCT qBetaChart, toCT qCountChart, toCT bucketChart, toCT decayChart])
+disp $ mempty & #charts .~ stack' 2 0.1 ([toCT sdCharts, toCT qCountChart, toCT accBucketChart, toCT decayChart])
 #+end_src
 
 #+RESULTS:
 : True
+
+
+#+begin_src haskell :results output
+disp $ mempty & #charts .~ unnamed ts' & (#hudOptions % #frames .~ [(Priority 30, FrameOptions (Just defaultRectStyle) 0.0)])
+#+end_src
+
+#+RESULTS:
+: True
+
+#+begin_src haskell :results output
+display $ mempty & #charts .~ unnamed ts' & (#hudOptions % #frames .~ [(Priority 30, FrameOptions Nothing 0.0)])
+#+end_src
+
+#+RESULTS:
+: True
+
+#+begin_src haskell :results output
+mempty :: HudOptions
+#+end_src
+
+#+RESULTS:
+: HudOptions {chartAspect = FixedAspect 1.5, axes = [], frames = [], legends = [], titles = []}
+
+
+** Next Text chart (re)callibration
+
+- more precise callibration between text, points and rect
+
+#+begin_src haskell :results output
+ts <- fmap pack <$> replicateM 4 (unwords <$> replicateM 3 word)
+s = defaultTextStyle & #anchor .~ AnchorStart
+ts' = zipWith (\t x -> TextChart s [(t, Point 0 x)]) ts [0..]
+ts
+#+end_src
+
+#+RESULTS:
+: ["ratione officia necessitatibus","debitis neque voluptate","quo aliquid aliquam","et excepturi consequatur"]
+
+#+begin_src haskell :results output
+display $ mempty & #charts .~ unnamed ts'
+#+end_src
+
+#+RESULTS:
+: True
+
+#+begin_src haskell :results output
+ts'
+#+end_src
+
+#+RESULTS:
+: [TextChart (TextStyle {size = 0.12, color = Colour 0.05 0.05 0.05 1.00, anchor = AnchorStart, hsize = 0.45, vsize = 1.1, vshift = -0.25, rotation = Nothing, scalex = ScaleX, frame = Nothing}) [("nihil asperiores sunt",Point 0.0 0.0)],TextChart (TextStyle {size = 0.12, color = Colour 0.05 0.05 0.05 1.00, anchor = AnchorStart, hsize = 0.45, vsize = 1.1, vshift = -0.25, rotation = Nothing, scalex = ScaleX, frame = Nothing}) [("voluptate fugit consequatur",Point 0.0 1.0)],TextChart (TextStyle {size = 0.12, color = Colour 0.05 0.05 0.05 1.00, anchor = AnchorStart, hsize = 0.45, vsize = 1.1, vshift = -0.25, rotation = Nothing, scalex = ScaleX, frame = Nothing}) [("qui perferendis cum",Point 0.0 2.0)],TextChart (TextStyle {size = 0.12, color = Colour 0.05 0.05 0.05 1.00, anchor = AnchorStart, hsize = 0.45, vsize = 1.1, vshift = -0.25, rotation = Nothing, scalex = ScaleX, frame = Nothing}) [("reiciendis non ut",Point 0.0 3.0)]]
+
+
+#+begin_src haskell :results output
+:t styleBoxes
+r1 = RectChart defaultRectStyle [fromMaybe undefined $ styleBoxes (x1 & foldOf (#charts % charts'))]
+#+end_src
+
+#+RESULTS:
+: styleBoxes :: [Chart] -> Maybe (Rect Double)
+: <interactive>:164:68: error: [GHC-88464]
+:     Variable not in scope: x1
+:     Suggested fix:
+:       Perhaps use one of these:
+:         data constructor ‘K1’ (imported from NumHask.Prelude),
+:         data constructor ‘L1’ (imported from NumHask.Prelude),
+:         data constructor ‘M1’ (imported from NumHask.Prelude)
+#+begin_src haskell :results output
+t' = take 4 ts'
+rDefault = RectChart defaultRectStyle [one]
+r1 = RectChart defaultRectStyle [fromMaybe undefined $ styleBoxes t']
+display $ mempty & #charts .~ unnamed (t' <> [r1] <> ps)
+#+end_src
+
+#+RESULTS:
+: True
+
+#+begin_src haskell :results output
+styleBoxes $ take 1 ts'
+#+end_src
+
+#+RESULTS:
+#+begin_src haskell :results output
+ps = (\x -> GlyphChart defaultGlyphStyle [Point 0 x]) <$>  [0..3]
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell :results output
+import Control.Monad
+
+unwords <$> replicateM 3 word
+#+end_src
+
+#+RESULTS:
+: deleniti rerum est
+: unwords :: [String] -> String

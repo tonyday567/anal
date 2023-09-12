@@ -132,3 +132,11 @@ rebase n n' xs = fmap (/head xs') xs'
 
 reindex :: Int -> Int -> ([a] -> [b]) -> [a] -> [b]
 reindex n n' f xs = drop n' $ f $ taker (n+n') xs
+
+-- | Stack a list of tree charts horizontally, then vertically (proceeding downwards which is opposite to the usual coordinate reference system but inutitively the way people read charts)
+stack' :: Int -> Double -> [ChartTree] -> ChartTree
+stack' _ _ [] = mempty
+stack' n gap cs = vert gap (reverse $ hori gap <$> group' cs [])
+  where
+    group' [] acc = reverse acc
+    group' x acc = group' (drop n x) (take n x : acc)
