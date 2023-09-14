@@ -371,7 +371,6 @@ bucketChart = dayChart (qRangeLabel qs) xs
 
 accBucketChart = compoundMerge [qBetaChart, bucketChart]
 
-
 ts = pack <$> reverse ["std decay = " <> show decayStd, "beta1 decay = " <> show decayBeta1, "quantile decay = " <> show decayQ, "quantiles = " <> show qs]
 s = defaultTextStyle & #anchor .~ AnchorStart
 ts' = zipWith (\t x -> TextChart s [(t, Point 0 x)]) ts [0..]
@@ -406,76 +405,3 @@ mempty :: HudOptions
 : HudOptions {chartAspect = FixedAspect 1.5, axes = [], frames = [], legends = [], titles = []}
 
 
-** Next Text chart (re)callibration
-
-- more precise callibration between text, points and rect
-
-#+begin_src haskell :results output
-ts <- fmap pack <$> replicateM 4 (unwords <$> replicateM 3 word)
-s = defaultTextStyle & #anchor .~ AnchorStart
-ts' = zipWith (\t x -> TextChart s [(t, Point 0 x)]) ts [0..]
-ts
-#+end_src
-
-#+RESULTS:
-: ["ratione officia necessitatibus","debitis neque voluptate","quo aliquid aliquam","et excepturi consequatur"]
-
-#+begin_src haskell :results output
-display $ mempty & #charts .~ unnamed ts'
-#+end_src
-
-#+RESULTS:
-: True
-
-#+begin_src haskell :results output
-ts'
-#+end_src
-
-#+RESULTS:
-: [TextChart (TextStyle {size = 0.12, color = Colour 0.05 0.05 0.05 1.00, anchor = AnchorStart, hsize = 0.45, vsize = 1.1, vshift = -0.25, rotation = Nothing, scalex = ScaleX, frame = Nothing}) [("nihil asperiores sunt",Point 0.0 0.0)],TextChart (TextStyle {size = 0.12, color = Colour 0.05 0.05 0.05 1.00, anchor = AnchorStart, hsize = 0.45, vsize = 1.1, vshift = -0.25, rotation = Nothing, scalex = ScaleX, frame = Nothing}) [("voluptate fugit consequatur",Point 0.0 1.0)],TextChart (TextStyle {size = 0.12, color = Colour 0.05 0.05 0.05 1.00, anchor = AnchorStart, hsize = 0.45, vsize = 1.1, vshift = -0.25, rotation = Nothing, scalex = ScaleX, frame = Nothing}) [("qui perferendis cum",Point 0.0 2.0)],TextChart (TextStyle {size = 0.12, color = Colour 0.05 0.05 0.05 1.00, anchor = AnchorStart, hsize = 0.45, vsize = 1.1, vshift = -0.25, rotation = Nothing, scalex = ScaleX, frame = Nothing}) [("reiciendis non ut",Point 0.0 3.0)]]
-
-
-#+begin_src haskell :results output
-:t styleBoxes
-r1 = RectChart defaultRectStyle [fromMaybe undefined $ styleBoxes (x1 & foldOf (#charts % charts'))]
-#+end_src
-
-#+RESULTS:
-: styleBoxes :: [Chart] -> Maybe (Rect Double)
-: <interactive>:164:68: error: [GHC-88464]
-:     Variable not in scope: x1
-:     Suggested fix:
-:       Perhaps use one of these:
-:         data constructor ‘K1’ (imported from NumHask.Prelude),
-:         data constructor ‘L1’ (imported from NumHask.Prelude),
-:         data constructor ‘M1’ (imported from NumHask.Prelude)
-#+begin_src haskell :results output
-t' = take 4 ts'
-rDefault = RectChart defaultRectStyle [one]
-r1 = RectChart defaultRectStyle [fromMaybe undefined $ styleBoxes t']
-display $ mempty & #charts .~ unnamed (t' <> [r1] <> ps)
-#+end_src
-
-#+RESULTS:
-: True
-
-#+begin_src haskell :results output
-styleBoxes $ take 1 ts'
-#+end_src
-
-#+RESULTS:
-#+begin_src haskell :results output
-ps = (\x -> GlyphChart defaultGlyphStyle [Point 0 x]) <$>  [0..3]
-#+end_src
-
-#+RESULTS:
-
-#+begin_src haskell :results output
-import Control.Monad
-
-unwords <$> replicateM 3 word
-#+end_src
-
-#+RESULTS:
-: deleniti rerum est
-: unwords :: [String] -> String

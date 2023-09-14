@@ -29,7 +29,6 @@ import Prelude qualified as P
 -- >>> import Anal
 -- >>> import FlatParse.Basic
 -- >>> import Data.Time.Calendar
--- >>> import Data.FormatN
 
 -- | Take the last n of a list.
 taker :: Int -> [a] -> [a]

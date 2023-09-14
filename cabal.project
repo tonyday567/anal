@@ -1,5 +1,5 @@
 packages:
   anal.cabal
-  ../chart-svg-compound/chart-svg-compound.cabal
   ../chart-svg/chart-svg.cabal
-  ../markup-parse/markup-parse.cabal
+
+allow-newer: prettychart:chart-svg
