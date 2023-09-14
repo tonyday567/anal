@@ -383,25 +383,3 @@ disp $ mempty & #charts .~ stack' 2 0.1 ([toCT sdCharts, toCT qCountChart, toCT 
 : True
 
 
-#+begin_src haskell :results output
-disp $ mempty & #charts .~ unnamed ts' & (#hudOptions % #frames .~ [(Priority 30, FrameOptions (Just defaultRectStyle) 0.0)])
-#+end_src
-
-#+RESULTS:
-: True
-
-#+begin_src haskell :results output
-display $ mempty & #charts .~ unnamed ts' & (#hudOptions % #frames .~ [(Priority 30, FrameOptions Nothing 0.0)])
-#+end_src
-
-#+RESULTS:
-: True
-
-#+begin_src haskell :results output
-mempty :: HudOptions
-#+end_src
-
-#+RESULTS:
-: HudOptions {chartAspect = FixedAspect 1.5, axes = [], frames = [], legends = [], titles = []}
-
-
