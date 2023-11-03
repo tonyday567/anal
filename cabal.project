@@ -1,5 +1,6 @@
 packages:
   anal.cabal
   ../chart-svg/chart-svg.cabal
+  ../prettychart/prettychart.cabal
 
 allow-newer: prettychart:chart-svg

@@ -45,18 +45,47 @@ print "imports loaded"
 r <- getReturns
 length r
 (display, quit) <- serve
-disp x = display $ x & set (#markupOptions % #markupHeight) 250 & set (#hudOptions % #frames % ix 1 % _2 % #buffer) 0.1
+disp x = display $ x & set (#markupOptions % #markupHeight) (Just 250) & set (#hudOptions % #frames % ix 1 % _2 % #buffer) 0.1
 #+end_src
 
 #+RESULTS:
-: [1 of 2] Compiling Anal             ( src/Anal.hs, interpreted )
-: [2 of 2] Compiling Anal.Returns     ( src/Anal/Returns.hs, interpreted )
-: Ok, two modules loaded.
-: ghci> Ok, two modules loaded.
-: >
-: imports loaded
-: 10897
-: Setting phasers to stun... (port 9160) (ctrl-c to quit>)
+#+begin_example
+Build profile: -w ghc-9.6.2 -O1
+In order, the following will be built (use -v for more details):
+ - chart-svg-0.6 (lib) (file src/Chart/Style.hs changed)
+ - prettychart-0.2 (lib) (configuration changed)
+ - anal-0.0.3 (lib) (configuration changed)
+Preprocessing library for chart-svg-0.6..
+Building library for chart-svg-0.6..
+[ 5 of 13] Compiling Chart.Style      ( src/Chart/Style.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Style.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Style.dyn_o ) [Source file changed]
+[ 6 of 13] Compiling Chart.Primitive  ( src/Chart/Primitive.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Primitive.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Primitive.dyn_o ) [Chart.Style changed]
+[ 7 of 13] Compiling Chart.Hud        ( src/Chart/Hud.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Hud.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Hud.dyn_o ) [Chart.Primitive changed]
+[ 8 of 13] Compiling Chart.Surface    ( src/Chart/Surface.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Surface.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Surface.dyn_o ) [Chart.Hud changed]
+[ 9 of 13] Compiling Chart.Markup     ( src/Chart/Markup.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Markup.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Markup.dyn_o ) [Source file changed]
+[10 of 13] Compiling Chart.Compound   ( src/Chart/Compound.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Compound.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Compound.dyn_o ) [Chart.Hud changed]
+[11 of 13] Compiling Chart.Bar        ( src/Chart/Bar.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Bar.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Bar.dyn_o ) [Chart.Hud changed]
+[12 of 13] Compiling Chart            ( src/Chart.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart.dyn_o ) [Chart.Bar changed]
+[13 of 13] Compiling Chart.Examples   ( src/Chart/Examples.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Examples.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/chart-svg-0.6/build/Chart/Examples.dyn_o ) [Chart changed]
+Configuring library for prettychart-0.2..
+Preprocessing library for prettychart-0.2..
+Building library for prettychart-0.2..
+[1 of 4] Compiling Prettychart.Charts ( src/Prettychart/Charts.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/prettychart-0.2/build/Prettychart/Charts.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/prettychart-0.2/build/Prettychart/Charts.dyn_o ) [Chart changed]
+[2 of 4] Compiling Prettychart.Any  ( src/Prettychart/Any.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/prettychart-0.2/build/Prettychart/Any.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/prettychart-0.2/build/Prettychart/Any.dyn_o ) [Chart changed]
+[3 of 4] Compiling Prettychart.Server ( src/Prettychart/Server.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/prettychart-0.2/build/Prettychart/Server.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/prettychart-0.2/build/Prettychart/Server.dyn_o ) [Web.Rep package changed]
+[4 of 4] Compiling Prettychart      ( src/Prettychart.hs, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/prettychart-0.2/build/Prettychart.o, /Users/tonyday/haskell/anal/dist-newstyle/build/x86_64-osx/ghc-9.6.2/prettychart-0.2/build/Prettychart.dyn_o ) [Prettychart.Any changed]
+Configuring library for anal-0.0.3..
+Preprocessing library for anal-0.0.3..
+GHCi, version 9.6.2: https://www.haskell.org/ghc/  :? for help
+[1 of 2] Compiling Anal             ( src/Anal.hs, interpreted )
+[2 of 2] Compiling Anal.Returns     ( src/Anal/Returns.hs, interpreted )
+Ok, two modules loaded.
+ghci> Ok, two modules loaded.
+>
+imports loaded
+10897
+Setting phasers to stun... (port 9160)
+(ctrl-c to quit)
+#+end_example
 
 * analysis
 *** Accumulated return
@@ -73,7 +102,7 @@ disp $ dayChart ["accumulated return"] (fmap (second (:[])) (taker 200 accret))
 
 #+RESULTS:
 : Just Range 1980-01-02 2023-03-17
-: True
+: > > > > > True
 
 *** median versus average
 **** mean versus 40th, 50th, 60th quantiles
@@ -326,14 +355,15 @@ styleBoxes ts'
 #+RESULTS:
 : Just Rect -0.432 2.567 -3.6000000000000004e-2 2.096
 
-* Next all in one
+* ToDo all in one
 
-- [ ] combine digit chart with digit accumulation
+- [X] smaller text chart
+- [ ] bar chart labels too close and a bit too small
 - [ ] ticks not scaling and fuzzy
-- [ ] better order of stack
-- [ ] smaller text chart
-- [ ] bar chart labels too close
-- [ ] better axis placement when multiple axis marks on one side
+  - function to scale hud along with the chart (can only do this once I assume, but maybe the chart section of HudChart can help)
+- [X] combine digit chart with digit accumulation
+- [X] better order of stack
+
 
 #+begin_src haskell :results output
 -- parameters
@@ -372,14 +402,83 @@ bucketChart = dayChart (qRangeLabel qs) xs
 accBucketChart = compoundMerge [qBetaChart, bucketChart]
 
 ts = pack <$> reverse ["std decay = " <> show decayStd, "beta1 decay = " <> show decayBeta1, "quantile decay = " <> show decayQ, "quantiles = " <> show qs]
-s = defaultTextStyle & #anchor .~ AnchorStart
+s = defaultTextStyle & #anchor .~ AnchorStart & #hsize .~ 0.65
 ts' = zipWith (\t x -> TextChart s [(t, Point 0 x)]) ts [0..]
-decayChart = (mempty::ChartOptions) & (#hudOptions % #frames .~ [(Priority 30, FrameOptions (Just defaultRectStyle) 0.0)]) & (#charts .~ unnamed ts')
+decayChart = (mempty::ChartOptions) & (#hudOptions % #frames .~ [(Priority 30, FrameOptions (Just clear) 0.05)]) & (#charts .~ unnamed ts')
 
 disp $ mempty & #charts .~ stack' 2 0.1 ([toCT sdCharts, toCT qCountChart, toCT accBucketChart, toCT decayChart])
 #+end_src
 
 #+RESULTS:
-: True
+#+begin_example
+> > > > > >
+> > >
+>
+> > > >
+> > > >
+>
+>
+>
+>
+> True
+#+end_example
+
+#+begin_src haskell :results output
+-- parameters
+n = 2000
+dropN = 100
+qs = [0.1, 0.5, 0.8] :: [Double]
+decayStd = 0.95
+decayBeta1 = 0.99
+decayQ = 0.996
+ri = zip [0..] (snd <$> r)
+days = reindex n dropN id (fst <$> r)
+
+accChart = lchart Nothing (palette1 0) (rebase n dropN (scan (dipure (+)) (snd <$> r)))
+
+finishHud = #axes %~ (<> [dayAxis days]) >>> #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.1)]) :: HudOptions -> HudOptions
+
+sdChart = lchart (Just PlaceLeft) (palette1 1) (reindex n dropN (scan (std decayStd)) (snd <$> r))
+
+betaChart = lchart (Just PlaceRight) (palette1 2) (reindex n dropN (scan (second' (std decayStd) >>> beta1 (ma decayBeta1))) ri)
 
 
+sdCharts = compoundMerge [sdChart,betaChart, accChart & #hudOptions %~ finishHud]
+
+qBeta = (second' (std decayStd) >>> beta1 (ma decayBeta1)) >>> digitize decayQ qs
+rDigit = reindex n dropN (scan qBeta) ri
+cs = Data.Mealy.fold countM (rDigit)
+qCountChart = barChart defaultBarOptions (BarData [fromIntegral <$> toList cs] (qRangeLabel qs) []) & #hudOptions % #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.2)]) & #hudOptions % #titles %~ (<> [(Priority 10, defaultTitle "quantile counts" & #buffer .~ 0.2 & #style % #color .~ palette1a 1 1)]) & #hudOptions % #axes %~ fmap (second (#bar .~ Nothing))
+
+
+qBetaChart = digitChart ((\x -> UTCTime x (P.fromInteger 0)) <$> days) (fromIntegral <$> rDigit) (quantileNames qs) & #hudOptions % #axes .~ []
+
+qBeta' = (first snd) <$> ((,) <$> id <*> (second' (std decayStd) >>> beta1 (ma decayBeta1) >>> digitize decayQ qs >>> delay1 0))
+buckets = fmap (ardList ((length qs :: Int) + 1)) (qBeta' >>> accRetDigits)
+xs = (drop dropN $ scan (second' buckets) (taker (n+dropN) $ (zip (fst <$> r) (zip [0..] (snd <$> r)))))
+bucketChart = dayChart (qRangeLabel qs) xs
+
+accBucketChart = compoundMerge [qBetaChart, bucketChart]
+
+ts = pack <$> reverse ["std decay = " <> show decayStd, "beta1 decay = " <> show decayBeta1, "quantile decay = " <> show decayQ, "quantiles = " <> show qs]
+s = defaultTextStyle & #anchor .~ AnchorStart & #hsize .~ 0.65
+ts' = zipWith (\t x -> TextChart s [(t, Point 0 x)]) ts [0..]
+decayChart = (mempty::ChartOptions) & (#hudOptions % #frames .~ [(Priority 30, FrameOptions (Just clear) 0.05)]) & (#charts .~ unnamed ts')
+-- disp $ qCountChart & #hudOptions % #axes %~ fmap (second (#bar .~ Nothing))
+
+disp $ mempty & #charts .~ stack' 2 0.1 ([toCT sdCharts, toCT qCountChart, toCT accBucketChart, toCT decayChart])
+#+end_src
+
+#+RESULTS:
+#+begin_example
+> > > > > > > >
+>
+>
+> > > >
+> > > >
+> >
+>
+>
+>
+> > True
+#+end_example

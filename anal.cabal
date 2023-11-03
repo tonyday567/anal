@@ -99,7 +99,7 @@ library
         , mtl          >=2.2.2 && <2.4
         , numhask      >=0.10 && <0.12
         , optics-core  >=0.4 && <0.5
-        , prettychart  >=0.1.2 && <0.2
+        , prettychart  >=0.2 && <0.3
         , profunctors  >=5.6.2 && <5.7
         , text         >=1.2 && <2.1
         , time         >=1.9 && <1.13

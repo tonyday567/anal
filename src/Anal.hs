@@ -76,6 +76,7 @@ dayChart labels xs = mempty & #charts .~ named "day" cs & #hudOptions .~ h
   where
     cs = zipWith (\c xs' -> LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs']) (palette1 <$> [0 ..]) (List.transpose $ snd <$> xs)
     xaxis = (Priority 5, timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> xs))
+
     yaxis = (Priority 5, defaultAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
     h = defaultHudOptions & #axes .~ [xaxis, yaxis] & #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.1)]) & #legends .~ leg
     leg =
@@ -119,7 +120,7 @@ quantileChart' n qs r' = c'
 
 -- helpers
 toCT :: ChartOptions -> ChartTree
-toCT co = addHud (view #hudOptions co) (view #charts co)
+toCT co = view #charts $ forgetHud co
 
 accret :: [(Day, Double)] -> [(Day, Double)]
 accret r = scan (second' (dipure (+))) r
