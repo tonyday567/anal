@@ -77,7 +77,7 @@ dayChart labels xs = mempty & #charts .~ named "day" cs & #hudOptions .~ h
     cs = zipWith (\c xs' -> LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs']) (palette1 <$> [0 ..]) (List.transpose $ snd <$> xs)
     xaxis = (Priority 5, timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> xs))
 
-    yaxis = (Priority 5, defaultAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
+    yaxis = (Priority 5, defaultYAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
     h = defaultHudOptions & #axes .~ [xaxis, yaxis] & #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.1)]) & #legends .~ leg
     leg =
       [ ( Priority 12,
@@ -106,7 +106,7 @@ leg' labels cs = mempty & #hudOptions % #legends .~
 
 -- | line chart with vertical axis, no guideline ticks
 lchart ::  Maybe Place -> Colour -> [Double] -> ChartOptions
-lchart p c xs = mempty & #charts .~ unnamed [LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs]] & #hudOptions % #axes .~ maybe [] (\p' -> [(Priority 5, defaultAxisOptions & #place .~ p' & #ticks % #ltick .~ Nothing & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)]) p & #hudOptions %~ colourHudOptions (const c)
+lchart p c xs = mempty & #charts .~ unnamed [LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs]] & #hudOptions % #axes .~ maybe [] (\p' -> [(Priority 5, defaultYAxisOptions & #place .~ p' & #ticks % #ltick .~ Nothing & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)]) p & #hudOptions %~ colourHudOptions (const c)
 
 -- | modification of prettychart quantileChart.
 quantileChart' :: Int -> [Double] -> [(Day, Double)] -> ChartOptions
@@ -115,7 +115,7 @@ quantileChart' n qs r' = c'
     qss = fmap (taker n) $ List.transpose $ scan (Data.Mealy.Quantiles.quantiles 0.99 qs) (snd <$> r')
     c = quantileChart (quantileNames qs) (blendMidLineStyles (length qss) 0.005 (Colour 0.7 0.1 0.3 0.5, Colour 0.1 0.4 0.8 1)) qss
     xaxis = (Priority 5, timeXAxis 8 (taker n $ (\x -> UTCTime x (P.fromInteger 0)) . fst <$> r'))
-    yaxis = (Priority 5, defaultAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
+    yaxis = (Priority 5, defaultYAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
     c' = c & (#hudOptions % #axes) .~ [xaxis, yaxis]
 
 -- helpers
