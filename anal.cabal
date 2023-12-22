@@ -91,8 +91,7 @@ library
     build-depends:
         , base         >=4.7 && <5
         , bytestring   >=0.11.3 && <0.13
-        , chart-svg    >=0.5 && <0.6
-        , chart-svg-compound
+        , chart-svg    >=0.6 && <0.7
         , containers   >=0.6 && <0.7
         , flatparse    >=0.3.5 && <0.6
         , markup-parse >=0.1 && <0.2
@@ -100,11 +99,12 @@ library
         , mtl          >=2.2.2 && <2.4
         , numhask      >=0.10 && <0.12
         , optics-core  >=0.4 && <0.5
-        , prettychart  >=0.1.2 && <0.2
+        , prettychart  >=0.2 && <0.3
         , profunctors  >=5.6.2 && <5.7
         , text         >=1.2 && <2.1
         , time         >=1.9 && <1.13
         , web-rep      >=0.11 && <0.12
+        , faker
     exposed-modules:
         Anal
         Anal.Returns

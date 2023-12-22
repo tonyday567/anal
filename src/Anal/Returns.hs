@@ -32,7 +32,6 @@ import NumHask.Prelude hiding (diff, fold)
 -- >>> import Anal.Returns
 -- >>> import FlatParse.Basic
 -- >>> import Data.Time.Calendar
--- >>> import Data.FormatN
 
 -- | Day parser, consumes separator
 --

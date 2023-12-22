@@ -579,9 +579,7 @@ Are the prices contiguous?
 
 
 ** trading signal
-**** ToDo (Today's return, Yesterday's signal)
-
-- [ ] cumulative return of each bucket
+**** (Today's return, Yesterday's signal)
 
 #+begin_src haskell :results output
 n = 1000
