@@ -321,7 +321,7 @@ styleBoxes ts'
 #+RESULTS:
 : Just Rect -0.432 2.567 -3.6000000000000004e-2 2.096
 
-* ToDo all in one
+* all in one
 
 - [X] smaller text chart
 - [X] bar chart labels too close and a bit too small
