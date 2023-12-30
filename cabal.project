@@ -1,6 +1,8 @@
 packages:
   anal.cabal
-  ../chart-svg/chart-svg.cabal
-  ../prettychart/prettychart.cabal
 
-allow-newer: prettychart:chart-svg
+allow-newer:
+  string-interpolate:template-haskell,
+  string-interpolate:text,
+  scotty:text,
+  websockets:text,

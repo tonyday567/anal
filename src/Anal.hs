@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RebindableSyntax #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
+{-# OPTIONS_GHC -Wno-x-partial #-}
 
 module Anal where
 
@@ -65,48 +66,49 @@ serve =
   startChartServerWith defaultSocketConfig $
     chartSocketPage Nothing
       & #htmlBody
-        .~ element
-          "div"
-          [Attr "class" "container"]
-          ( element "div" [Attr "class" "row"] $ element "div" [Attr "class" "col"] (element_ "div" [Attr "id" "prettychart"])
-          )
+      .~ element
+        "div"
+        [Attr "class" "container"]
+        ( element "div" [Attr "class" "row"] $ element "div" [Attr "class" "col"] (element_ "div" [Attr "id" "prettychart"])
+        )
 
 dayChart :: [Text] -> [(Day, [Double])] -> ChartOptions
-dayChart labels xs = mempty & #charts .~ named "day" cs & #hudOptions .~ h
+dayChart labels xs = mempty & #chartTree .~ named "day" cs & #hudOptions .~ h
   where
-    cs = zipWith (\c xs' -> LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs']) (palette1 <$> [0 ..]) (List.transpose $ snd <$> xs)
-    xaxis = (Priority 5, timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> xs))
+    cs = zipWith (\c xs' -> LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs']) (palette <$> [0 ..]) (List.transpose $ snd <$> xs)
+    xaxis = Priority 5 $ timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> xs)
 
-    yaxis = (Priority 5, defaultYAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
-    h = defaultHudOptions & #axes .~ [xaxis, yaxis] & #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.1)]) & #legends .~ leg
+    yaxis = Priority 5 $ defaultYAxisOptions & #place .~ PlaceLeft & #ticks % #tick .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend
+    h = defaultHudOptions & #axes .~ [xaxis, yaxis] & #frames %~ (<> [Priority 30 $ defaultFrameOptions & #buffer .~ 0.1]) & #legends .~ leg
     leg =
-      [ ( Priority 12,
-          defaultLegendOptions
-            & over #frame (fmap (set #color white))
-            & set #place PlaceRight
-            & set (#textStyle % #size) 0.15
-            & set #legendCharts (zipWith (\t c -> (t, [c])) labels cs)
-        )
+      [ Priority 12 $
+            defaultLegendOptions
+              & over #frame (fmap (set #color white))
+              & set #place PlaceRight
+              & set (#textStyle % #size) 0.15
+              & set #legendCharts (zipWith (\t c -> (t, [c])) labels cs)
       ]
 
-dayAxis :: [Day] -> (Priority, AxisOptions)
-dayAxis ds = (Priority 5, timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) <$> ds))
+dayAxis :: [Day] -> Priority AxisOptions
+dayAxis ds = Priority 5 $ timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) <$> ds)
 
 -- | legend constructed from different charts
 leg' :: [Text] -> [Chart] -> ChartOptions
-leg' labels cs = mempty & #hudOptions % #legends .~
-      [ ( Priority 12,
-          defaultLegendOptions
-            & over #frame (fmap (set #color white))
-            & set #place PlaceRight
-            & set (#textStyle % #size) 0.15
-            & set #legendCharts (zipWith (\t c -> (t, [c])) labels cs)
-        )
-      ]
+leg' labels cs =
+  mempty
+    & #hudOptions
+    % #legends
+    .~ [ Priority 12 $
+             defaultLegendOptions
+               & over #frame (fmap (set #color white))
+               & set #place PlaceRight
+               & set (#textStyle % #size) 0.15
+               & set #legendCharts (zipWith (\t c -> (t, [c])) labels cs)
+       ]
 
 -- | line chart with vertical axis, no guideline ticks
-lchart ::  Maybe Place -> Colour -> [Double] -> ChartOptions
-lchart p c xs = mempty & #charts .~ unnamed [LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs]] & #hudOptions % #axes .~ maybe [] (\p' -> [(Priority 5, defaultYAxisOptions & #place .~ p' & #ticks % #ltick .~ Nothing & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)]) p & #hudOptions %~ colourHudOptions (const c)
+lchart :: Maybe Place -> Colour -> [Double] -> ChartOptions
+lchart p c xs = mempty & #chartTree .~ unnamed [LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs]] & #hudOptions % #axes .~ maybe [] (\p' -> [Priority 5 $ defaultYAxisOptions & #place .~ p' & #ticks % #lineTick .~ Nothing & #ticks % #tick .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend]) p & #hudOptions %~ colourHudOptions (const c)
 
 -- | modification of prettychart quantileChart.
 quantileChart' :: Int -> [Double] -> [(Day, Double)] -> ChartOptions
@@ -114,24 +116,24 @@ quantileChart' n qs r' = c'
   where
     qss = fmap (taker n) $ List.transpose $ scan (Data.Mealy.Quantiles.quantiles 0.99 qs) (snd <$> r')
     c = quantileChart (quantileNames qs) (blendMidLineStyles (length qss) 0.005 (Colour 0.7 0.1 0.3 0.5, Colour 0.1 0.4 0.8 1)) qss
-    xaxis = (Priority 5, timeXAxis 8 (taker n $ (\x -> UTCTime x (P.fromInteger 0)) . fst <$> r'))
-    yaxis = (Priority 5, defaultYAxisOptions & #place .~ PlaceLeft & #ticks % #style .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend)
+    xaxis = Priority 5 $ timeXAxis 8 (taker n $ (\x -> UTCTime x (P.fromInteger 0)) . fst <$> r')
+    yaxis = Priority 5 $ defaultYAxisOptions & #place .~ PlaceLeft & #ticks % #tick .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend
     c' = c & (#hudOptions % #axes) .~ [xaxis, yaxis]
 
 -- helpers
 toCT :: ChartOptions -> ChartTree
-toCT co = view #charts $ forgetHud co
+toCT co = view #chartTree $ forgetHud co
 
 accret :: [(Day, Double)] -> [(Day, Double)]
 accret r = scan (second' (dipure (+))) r
 
 rebase :: Int -> Int -> [Double] -> [Double]
-rebase n n' xs = fmap (/head xs') xs'
+rebase n n' xs = fmap (/ head xs') xs'
   where
     xs' = reindex n n' id xs
 
 reindex :: Int -> Int -> ([a] -> [b]) -> [a] -> [b]
-reindex n n' f xs = drop n' $ f $ taker (n+n') xs
+reindex n n' f xs = drop n' $ f $ taker (n + n') xs
 
 -- | Stack a list of tree charts horizontally, then vertically (proceeding downwards which is opposite to the usual coordinate reference system but inutitively the way people read charts)
 stack' :: Int -> Double -> [ChartTree] -> ChartTree
