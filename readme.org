@@ -150,7 +150,12 @@ disp c
 
 #+RESULTS:
 [[file:other/arc.svg]]
-* standard deviation
+* ToDo standard deviation
+
+It looks like the market goes up when sd is declining.
+
+What is the gradient of a moving statistic?
+
 ** working
 
 #+begin_src haskell :file other/sd.svg :results output graphics file :exports both
@@ -321,8 +326,12 @@ styleBoxes ts'
 #+RESULTS:
 : Just Rect -0.432 2.567 -3.6000000000000004e-2 2.096
 
-* all in one
-
+* ToDo all in one
+- [ ] try and predict future stats
+  - [ ] calculate ma std etc
+- [ ] track a p&l
+  - [ ] random p&l streams
+- [ ] chart of expected future distribution
 - [X] smaller text chart
 - [X] bar chart labels too close and a bit too small
 - [X] ticks not scaling and fuzzy
