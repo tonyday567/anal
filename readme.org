@@ -150,7 +150,7 @@ disp c
 
 #+RESULTS:
 [[file:other/arc.svg]]
-* ToDo standard deviation
+* standard deviation
 
 It looks like the market goes up when sd is declining.
 
@@ -326,19 +326,19 @@ styleBoxes ts'
 #+RESULTS:
 : Just Rect -0.432 2.567 -3.6000000000000004e-2 2.096
 
-* ToDo all in one
+* all in one
+
 - [ ] try and predict future stats
   - [ ] calculate ma std etc
+  - [ ] chart of expected future distribution
 - [ ] track a p&l
   - [ ] random p&l streams
-- [ ] chart of expected future distribution
 - [X] smaller text chart
 - [X] bar chart labels too close and a bit too small
 - [X] ticks not scaling and fuzzy
   - function to scale hud along with the chart (can only do this once I assume, but maybe the chart section of HudChart can help)
 - [X] combine digit chart with digit accumulation
 - [X] better order of stack
-- [ ] v06candidate1
 
 #+begin_src haskell-ng :results output
 -- parameters
