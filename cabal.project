@@ -1,3 +1,6 @@
 packages:
   anal.cabal
 
+allow-newer:
+  web-rep:websockets,
+  box-socket:websockets
