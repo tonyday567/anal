@@ -1,6 +1,8 @@
 packages:
   anal.cabal
 
-allow-newer:
-  web-rep:websockets,
-  box-socket:websockets
+write-ghc-environment-files: always
+
+allow-newer: websockets:containers
+
+tests: True

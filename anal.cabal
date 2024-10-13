@@ -9,10 +9,15 @@ author: Tony Day
 maintainer: tonyday567@gmail.com
 homepage: https://github.com/tonyday567/anal#readme
 bug-reports: https://github.com/tonyday567/anal/issues
-synopsis: See readme.md
-description: See readme.md for description.
+synopsis: analysis
+description: Analysis: the prefix
 build-type: Simple
-tested-with: GHC == 9.6.2 || == 9.8.1
+tested-with:
+    , GHC == 9.10.1
+    , GHC == 9.6.5
+    , GHC == 9.8.2
+extra-doc-files:
+    readme.md
 
 source-repository head
     type: git
@@ -38,7 +43,7 @@ library
     build-depends:
         , base         >=4.7 && <5
         , bytestring   >=0.11.3 && <0.13
-        , chart-svg    >=0.6 && <0.7
+        , chart-svg    >=0.6 && <0.8
         , containers   >=0.6 && <0.8
         , faker
         , flatparse    >=0.3.5 && <0.6
@@ -54,3 +59,15 @@ library
     exposed-modules:
         Anal
         Anal.Returns
+
+test-suite doctests
+    import: ghc2021-stanza
+    main-is: doctests.hs
+    hs-source-dirs: test
+    build-depends:
+        , QuickCheck       >=2.14 && <2.16
+        , base             >=4.14 && <5
+        , doctest-parallel >=0.3 && <0.4
+    default-extensions: RebindableSyntax
+    ghc-options: -threaded
+    type: exitcode-stdio-1.0
