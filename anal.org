@@ -41,33 +41,27 @@ import Control.Category ((>>>))
 import Control.Applicative
 import Chart.Compound
 import Faker.Lorem
+import Text.Pretty.Simple
 print "imports loaded"
 r <- getReturns
 length r
 (display, quit) <- serve
 disp x = display $ x & set (#markupOptions % #markupHeight) (Just 250) & set (#hudOptions % #frames % ix 1 % #item % #buffer) 0.1
+
 #+end_src
 
 #+RESULTS:
-#+begin_example
-Build profile: -w ghc-9.10.1 -O1
-In order, the following will be built (use -v for more details):
- - anal-0.0.4 (interactive) (lib) (first run)
-Preprocessing library for anal-0.0.4...
-GHCi, version 9.10.1: https://www.haskell.org/ghc/  :? for help
-[1 of 2] Compiling Anal             ( src/Anal.hs, interpreted )
-[2 of 2] Compiling Anal.Returns     ( src/Anal/Returns.hs, interpreted )
-Ok, two modules loaded.
-Ok, two modules reloaded.
-"imports loaded"
-10897
-Setting phasers to stun... (port 9160) (ctrl-c to quit)
-#+end_example
+: Ok, two modules reloaded.
+: "imports loaded"
+: 10897
+: Setting phasers to stun... (port 9160) (ctrl-c to quit)
 
+#+RESULTS:
+: True
 
 #+begin_src haskell-ng :results output
 import Chart.Examples
-disp lineExample
+disp $ lineExample & set #hudOptions mempty
 #+end_src
 
 #+RESULTS:
@@ -83,7 +77,8 @@ decay = 0.01
 rs = snd <$> r
 xma = scan (ma decay) rs
 xstd = scan (std decay) rs
-disp $ dayChart ["accumulated return"] (fmap (second (:[])) (taker 200 accret))
+c = dayChart ["acc return"] (fmap (second (:[])) (taker 200 accret))
+disp $ c & over (#hudOptions % #axes) (List.reverse)
 #+end_src
 
 #+RESULTS:
@@ -96,11 +91,10 @@ disp $ dayChart ["accumulated return"] (fmap (second (:[])) (taker 200 accret))
 #+begin_src haskell-ng :file other/mvq.svg :results output graphics file :exports both
 mvq = (second' ((\a b -> a:(b!!1-a):b) <$> ma 0.99 <*> Data.Mealy.Quantiles.quantiles 0.99 [0.4,0.5,0.6]))
 
-c = dayChart ["mean", "skew", "40th", "median", "60th"] (drop 1000 $ scan mvq (taker 2000 r))
+c = dayChart ["mean", "skew", "40th", "median", "60th"] (drop 1000 $ scan mvq (taker 2000 r)) & over (#hudOptions % #axes) (List.reverse) & set (#hudOptions % #legends % each % #item % #place) PlaceRight
 disp c
 writeChartOptions "other/mvq.svg" c
-
- #+end_src
+#+end_src
 
 #+RESULTS:
 [[file:other/mvq.svg]]
@@ -168,96 +162,58 @@ writeChartOptions "other/arc.svg" c
 disp c
 #+end_src
 
-#+RESULTS:
-[[file:other/arc.svg]]
+#+RESULTS:[[file:other/arc.svg]]
 * standard deviation
 
 It looks like the market goes up when sd is declining.
 
 What is the gradient of a moving statistic?
 
-** ToDo not working
+** return volatility chart
 
-#+begin_src haskell-ng :file other/sd.svg :results output graphics file :exports both
+#+begin_src haskell-ng :file other/accsd.svg :results output graphics file :exports both
+dropN = 2000
+
 accret = scan (second' (dipure (+))) r
 rebase xs = zip (fst <$> xs) (fmap (/head (snd <$> xs)) (snd <$> xs))
 
 accChart = dayChart ["accumulated return"] (fmap (second (:[])) (rebase $ drop dropN $ taker (n+dropN) accret)) & set (#hudOptions % #legends) []
-accChart' = accChart & over (#hudOptions % #axes) (fmap (second (set ( #ticks % #ltick ) Nothing))) & over (#charts % charts') (fmap (colourChart (const (palette1 2)))) & set (#hudOptions % #legends) []
+accChart' = accChart & set (#hudOptions % #axes % each % #item % #ticks % #lineTick) Nothing & set (#hudOptions % #legends) [] & over (#hudOptions % #axes) List.reverse
 
-sdChart = dayChart ["std"] $ second (:[]) <$> scanRet (std decay) n dropN r
-sdChart' = sdChart & #hudOptions .~ (mempty & #axes .~ (view (#hudOptions % #axes) sdChart & (\x -> (List.!!) x 1) & second (set #place PlaceRight) & (:[]))) & over (#hudOptions % #axes) (fmap (second (set ( #ticks % #ltick ) Nothing)))
+sdChart = (dayChart ["std"] $ second (:[]) <$> scanRet (std decay) n dropN r) & set (#hudOptions % #legends) [] & over (#hudOptions % #axes) (set (each % #item % #place) PlaceRight . drop 1) & set (#chartTree % charts' % each % #chartStyle % #color) (palette 6)
 
-compChart = compoundMerge [accChart', sdChart']
-compChart' = compChart & set (#hudOptions % #legends) [(Priority 20,defaultLegendOptions & set #legendCharts (zipWith (\t co -> (t, foldOf (#charts % charts') co)) ["return", "sd"] [accChart', sdChart']))]
-writeChartOptions "other/sd.svg" compChart'
+c = compoundMerge [sdChart, accChart']
+writeChartOptions "other/accsd.svg" c
 
-disp compChart'
+disp c
 #+end_src
 
 #+RESULTS:
-[[file:other/sd.svg]]
+: True
 
-** ToDo gradient of sd
+** gradient of sd
 
 #+begin_src haskell-ng :results output
-stdBeta = dayChart ["std"] $ second (:[]) <$> scanRet (second' (std decayStd) >>> beta1 (ma decayBeta1)) n dropN (zip (fst <$> r) (zip [0..] (snd <$> r)))
-stdBeta' = stdBeta & over (#hudOptions % #axes) (fmap (second (set ( #ticks % #ltick ) Nothing))) & over (#charts % charts') (fmap (colourChart (const (palette1 2))))  & set (#hudOptions % #legends) []
+decayStd = 0.95
+decayBeta1 = 0.995
 
-betaSdChart = compoundMerge [sdChart', stdBeta']
-betaSdChart' = betaSdChart & set (#hudOptions % #legends) [(Priority 20,defaultLegendOptions & set #legendCharts (zipWith (\t co -> (t, foldOf (#charts % charts') co)) ["beta of sd", "sd"] [stdBeta', sdChart']))]
+stdBeta = dayChart ["std"] $ second (:[]) <$> scanRet (second' (std decayStd) >>> beta1 (ma decayBeta1)) n dropN (zip (fst <$> r) (zip [0..] (snd <$> r)))
+
+stdBeta' = stdBeta & set (#hudOptions % #axes % each % #item % #ticks % #lineTick ) Nothing & set (#chartTree % charts' % each % #chartStyle % #color) (palette 1) & set (#hudOptions % #legends) []
+
+betaSdChart = compoundMerge [sdChart, stdBeta']
+betaSdChart' = betaSdChart & set (#hudOptions % #legends) [(Priority 20 $ defaultLegendOptions & set #legendCharts (zipWith (\t co -> (t, foldOf (#chartTree % charts') co)) ["beta of sd", "sd"] [stdBeta', sdChart]))]
 disp betaSdChart'
 #+end_src
 
 #+RESULTS:
-#+begin_example
-<interactive>:115:69: error: [GHC-88464]
-    Variable not in scope: decayStd :: Double
+: True
 
-<interactive>:115:93: error: [GHC-88464]
-    Variable not in scope: decayBeta1 :: Double
-
-<interactive>:115:108: error: [GHC-88464]
-    Variable not in scope: dropN :: Int
-    Suggested fix:
-      Perhaps use one of these:
-        ‘drop’ (imported from NumHask.Prelude),
-        ‘Map.drop’ (imported from Data.Map),
-        ‘Text.drop’ (imported from Data.Text)
-<interactive>:116:12: error: [GHC-88464]
-    Variable not in scope: stdBeta
-
-<interactive>:116:133: error: [GHC-88464]
-    Variable not in scope: colourChart :: (b1 -> a7) -> Chart -> Chart
-
-<interactive>:116:153: error: [GHC-88464]
-    Variable not in scope: palette1 :: t0 -> a7
-    Suggested fix:
-      Perhaps use one of these:
-        ‘palette’ (imported from Chart), ‘paletteO’ (imported from Chart),
-        ‘paletteR’ (imported from Chart)
-<interactive>:118:30: error: [GHC-88464]
-    Variable not in scope: sdChart' :: ChartOptions
-
-<interactive>:118:40: error: [GHC-88464]
-    Variable not in scope: stdBeta' :: ChartOptions
-<interactive>:119:16: error: [GHC-88464]
-    Variable not in scope: betaSdChart
-
-<interactive>:119:191: error: [GHC-88464]
-    Variable not in scope: stdBeta'
-
-<interactive>:119:201: error: [GHC-88464]
-    Variable not in scope: sdChart'
-<interactive>:120:6: error: [GHC-88464]
-    Variable not in scope: betaSdChart' :: ChartOptions
-#+end_example
-
-*** ToDo digitize beta
+*** digitize beta
 
 #+begin_src haskell-ng :results output
 qs = [0.2,0.4,0.6,0.8]
-qBeta = (second' (std d) >>> beta1 (ma 0.95)) >>> digitize 0.996 qs
+qBeta = (second' (std 0.95) >>> beta1 (ma 0.95)) >>> digitize 0.996 qs
 :t qBeta
 d = drop dropN $ scan (second' qBeta) (taker (n+dropN) $ (zip (fst <$> r) (zip [0..] (snd <$> r))))
 betaSdDigitChart = digitChart ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> d) (fromIntegral . snd <$> d) (quantileNames qs)
@@ -265,73 +221,73 @@ disp betaSdDigitChart
 #+end_src
 
 #+RESULTS:
-#+begin_example
-<interactive>:124:51: error: [GHC-83865]
-    • Couldn't match type ‘Double’ with ‘[(Day, (Double, Int))]’
-      Expected: Mealy [(Day, (Double, Int))] Int
-        Actual: Mealy Double Int
-    • In the second argument of ‘(>>>)’, namely ‘digitize 0.996 qs’
-      In the expression:
-        (second' (std d) >>> beta1 (ma 0.95)) >>> digitize 0.996 qs
-      In an equation for ‘qBeta’:
-          qBeta = (second' (std d) >>> beta1 (ma 0.95)) >>> digitize 0.996 qs
-<interactive>:1:1: error: [GHC-88464] Variable not in scope: qBeta
-<interactive>:126:10: error: [GHC-88464]
-    Variable not in scope: dropN :: Int
-    Suggested fix:
-      Perhaps use one of these:
-        ‘drop’ (imported from NumHask.Prelude),
-        ‘Map.drop’ (imported from Data.Map),
-        ‘Text.drop’ (imported from Data.Text)
-
-<interactive>:126:32: error: [GHC-88464]
-    Variable not in scope: qBeta :: Mealy (a0, Double) b
-
-<interactive>:126:49: error: [GHC-88464]
-    Variable not in scope: dropN :: Int
-    Suggested fix:
-      Perhaps use one of these:
-        ‘drop’ (imported from NumHask.Prelude),
-        ‘Map.drop’ (imported from Data.Map),
-        ‘Text.drop’ (imported from Data.Text)
-<interactive>:127:82: error: [GHC-39999]
-    • No instance for ‘FromIntegral Double (Double, Int)’
-        arising from a use of ‘fromIntegral’
-    • In the first argument of ‘(.)’, namely ‘fromIntegral’
-      In the first argument of ‘(<$>)’, namely ‘fromIntegral . snd’
-      In the second argument of ‘digitChart’, namely
-        ‘(fromIntegral . snd <$> d)’
-<interactive>:128:6: error: [GHC-88464]
-    Variable not in scope: betaSdDigitChart :: ChartOptions
-#+end_example
-
-
-
-#+begin_src haskell :results output
-:t d
-#+end_src
-
-#+RESULTS:
-: d :: [(Day, Int)]
+: qBeta :: Mealy (Double, Double) Int
+: True
 
 
 Skew away from upper quantiles
 
-#+begin_src haskell :results output
+#+begin_src haskell-ng :results output
 Data.Mealy.fold countM (snd <$> d)
 #+end_src
 
 #+RESULTS:
-: fromList [(0,892),(1,813),(2,1191),(3,1072),(4,1032)]
+: fromList [(0,196),(1,158),(2,230),(3,195),(4,221)]
 
-#+begin_src haskell :results output graphics file :exports both
-acc = dayChartRhs (fmap (second (:[])) (rebase $ drop dropN $ taker (n+dropN) accret))
+
+** ToDo deconstruct this
+
+#+begin_src haskell-ng :results output graphics file :exports both
+acc = dayChart (fmap (second (:[])) (rebase $ drop dropN $ taker (n+dropN) accret))
 acc' = acc & over (#hudOptions % #axes) (fmap (second (set ( #ticks % #ltick ) Nothing))) & over (#charts % charts') (fmap (colourChart (const (palette1 4))))
 c = dayChart (qRangeLabel qs) (scanRet (fmap (ardList 6) (sigRet mvmRaw qs 0.996 >>> accRetDigits)) n ndrop r)
 
 disp $ compoundMerge [c, acc']
 #+end_src
 
+#+RESULTS:
+[[file:<interactive>:774:23: error: [GHC-83865]
+    • Couldn't match type ‘(Day, [Double])’ with ‘Text’
+      Expected: (Day, Double) -> Text
+        Actual: (Day, Double) -> (Day, [Double])
+    • In the first argument of ‘fmap’, namely ‘(second (: []))’
+      In the first argument of ‘dayChart’, namely
+        ‘(fmap
+            (second (: [])) (rebase $ drop dropN $ taker (n + dropN) accret))’
+      In the expression:
+        dayChart
+          (fmap
+             (second (: [])) (rebase $ drop dropN $ taker (n + dropN) accret))
+<interactive>:775:8: error: [GHC-88464] Variable not in scope: acc
+
+<interactive>:775:125: error: [GHC-88464]
+    Variable not in scope: colourChart :: (b1 -> a4) -> Chart -> Chart
+
+<interactive>:775:145: error: [GHC-88464]
+    Variable not in scope: palette1 :: t0 -> a4
+    Suggested fix:
+      Perhaps use one of these:
+        ‘palette’ (imported from Chart), ‘paletteO’ (imported from Chart),
+        ‘paletteR’ (imported from Chart)
+<interactive>:778:26: error: [GHC-88464]
+    Variable not in scope: acc' :: ChartOptions]]
+[[file:<interactive>:767:7: error: [GHC-88464]
+    Variable not in scope: dayChartRhs :: [(Day, [Double])] -> t
+    Suggested fix: Perhaps use ‘dayChart’ (line 77)
+<interactive>:768:8: error: [GHC-88464] Variable not in scope: acc
+
+<interactive>:768:125: error: [GHC-88464]
+    Variable not in scope: colourChart :: (b1 -> a4) -> Chart -> Chart
+
+<interactive>:768:145: error: [GHC-88464]
+    Variable not in scope: palette1 :: t0 -> a4
+    Suggested fix:
+      Perhaps use one of these:
+        ‘palette’ (imported from Chart), ‘paletteO’ (imported from Chart),
+        ‘paletteR’ (imported from Chart)
+<interactive>:771:26: error: [GHC-88464]
+    Variable not in scope: acc' :: ChartOptions]]
+
 #+begin_src haskell :results output
 :t d
 #+end_src
@@ -339,10 +295,12 @@ disp $ compoundMerge [c, acc']
 #+RESULTS:
 : d :: [(Day, Int)]
 
-#+begin_src haskell :results output
+** bucket chart
+
+#+begin_src haskell-ng :results output
 n = 2000
 dropN = 100
-qs = [0.1, 0.9] :: [Double]
+qs = [0.1, 0.5, 0.9] :: [Double]
 decayStd = 0.95
 decayBeta1 = 0.95
 decayQ = 0.95
@@ -354,25 +312,10 @@ disp bucketChart
 #+end_src
 
 #+RESULTS:
-: > True
+: True
 
 
-*** ToDo vert
-
-#+begin_src haskell-ng :results output
-:t stack 2 0.1
-:t c
-:t stack 2 0.1 [(\c -> addHud (view #hudOptions c) (view #charts c)) c]
-#+end_src
-
-#+RESULTS:
-: stack 2 0.1 :: [ChartTree] -> ChartTree
-: c :: ChartOptions
-: <interactive>:1:55: error: [GHC-64725]
-:     • Data constructor ‘ChartOptions’ doesn't have a field named ‘charts’
-:     • In the first argument of ‘view’, namely ‘#charts’
-:       In the second argument of ‘addHud’, namely ‘(view #charts c)’
-:       In the expression: addHud (view #hudOptions c) (view #charts c)
+** ToDo betaSdDigitChart
 
 #+begin_src haskell-ng :results output
 qBeta = (second' (std decayStd) >>> beta1 (ma decayBeta1)) >>> digitize decayQ qs
@@ -381,49 +324,9 @@ betaSdDigitChart = digitChart ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> d) 
 disp betaSdDigitChart
 #+end_src
 
-#+RESULTS:
-#+begin_example
-<interactive>:136:23: error: [GHC-88464]
-    Variable not in scope: decayStd :: Double
 
-<interactive>:136:47: error: [GHC-88464]
-    Variable not in scope: decayBeta1 :: Double
 
-<interactive>:136:73: error: [GHC-88464]
-    Variable not in scope: decayQ :: Double
-    Suggested fix:
-      Perhaps use one of these:
-        ‘decay’ (line 48), ‘delay’ (imported from Data.Mealy),
-        ‘delay1’ (imported from Data.Mealy)
-<interactive>:137:10: error: [GHC-88464]
-    Variable not in scope: dropN :: Int
-    Suggested fix:
-      Perhaps use one of these:
-        ‘drop’ (imported from NumHask.Prelude),
-        ‘Map.drop’ (imported from Data.Map),
-        ‘Text.drop’ (imported from Data.Text)
-
-<interactive>:137:32: error: [GHC-88464]
-    Variable not in scope: qBeta :: Mealy (a0, Double) b
-
-<interactive>:137:49: error: [GHC-88464]
-    Variable not in scope: dropN :: Int
-    Suggested fix:
-      Perhaps use one of these:
-        ‘drop’ (imported from NumHask.Prelude),
-        ‘Map.drop’ (imported from Data.Map),
-        ‘Text.drop’ (imported from Data.Text)
-<interactive>:138:82: error: [GHC-39999]
-    • No instance for ‘FromIntegral Double (Double, Int)’
-        arising from a use of ‘fromIntegral’
-    • In the first argument of ‘(.)’, namely ‘fromIntegral’
-      In the first argument of ‘(<$>)’, namely ‘fromIntegral . snd’
-      In the second argument of ‘digitChart’, namely
-        ‘(fromIntegral . snd <$> d)’
-<interactive>:139:6: error: [GHC-88464]
-    Variable not in scope: betaSdDigitChart :: ChartOptions
-#+end_example
-
+** ToDo vert
 
 #+begin_src haskell :results output
 toCT co = addHud (view #hudOptions co) (view #charts co)
@@ -452,20 +355,6 @@ ts' = [TextChart s (zipWith (\t x -> (t, Point 0 x)) ts [0..])]
 decayChart = mempty & #charts .~ unnamed (ts' <> [padChart 0.2 ts']) :: ChartOptions
 #+end_src
 
-#+RESULTS:
-
-#+begin_src haskell :results output
-#+end_src
-
-#+RESULTS:
-
-#+begin_src haskell :results output
-styleBoxes ts'
-#+end_src
-
-#+RESULTS:
-: Just Rect -0.432 2.567 -3.6000000000000004e-2 2.096
-
 * ToDo all in one
 
 - [ ] try and predict future stats
@@ -491,21 +380,23 @@ decayQ = 0.996
 ri = zip [0..] (snd <$> r)
 days = reindex n dropN id (fst <$> r)
 
-accChart = lchart Nothing (palette1 0) (rebase n dropN (scan (dipure (+)) (snd <$> r)))
+accret = scan (second' (dipure (+))) r
+rebase xs = zip (fst <$> xs) (fmap (/head (snd <$> xs)) (snd <$> xs))
+
+accChart = lchart Nothing (palette 0) (rebase n dropN (scan (dipure (+)) (snd <$> r)))
 
 finishHud = #axes %~ (<> [dayAxis days]) >>> #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.1)]) :: HudOptions -> HudOptions
 
-sdChart = lchart (Just PlaceLeft) (palette1 1) (reindex n dropN (scan (std decayStd)) (snd <$> r))
+sdChart = lchart (Just PlaceLeft) (palette 1) (reindex n dropN (scan (std decayStd)) (snd <$> r))
 
-betaChart = lchart (Just PlaceRight) (palette1 2) (reindex n dropN (scan (second' (std decayStd) >>> beta1 (ma decayBeta1))) ri)
-
+betaChart = lchart (Just PlaceRight) (palette 2) (reindex n dropN (scan (second' (std decayStd) >>> beta1 (ma decayBeta1))) ri)
 
 sdCharts = compoundMerge [sdChart,betaChart, accChart & #hudOptions %~ finishHud]
 
 qBeta = (second' (std decayStd) >>> beta1 (ma decayBeta1)) >>> digitize decayQ qs
 rDigit = reindex n dropN (scan qBeta) ri
 cs = Data.Mealy.fold countM (rDigit)
-qCountChart = barChart defaultBarOptions (BarData [fromIntegral <$> toList cs] (qRangeLabel qs) []) & #hudOptions % #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.2)]) & #hudOptions % #titles %~ (<> [(Priority 10, defaultTitle "quantile counts" & #buffer .~ 0.2 & #style % #color .~ palette1a 1 1)])
+qCountChart = barChart defaultBarOptions (BarData [fromIntegral <$> toList cs] (qRangeLabel qs) []) & #hudOptions % #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.2)]) & #hudOptions % #titles %~ (<> [(Priority 10, defaultTitle "quantile counts" & #buffer .~ 0.2 & #style % #color .~ palette 1)])
 
 qBetaChart = digitChart ((\x -> UTCTime x (P.fromInteger 0)) <$> days) (fromIntegral <$> rDigit) (quantileNames qs) & #hudOptions % #axes .~ []
 
@@ -526,13 +417,18 @@ disp $ mempty & #charts .~ stack' 2 0.1 ([toCT sdCharts, toCT qCountChart, toCT 
 
 #+RESULTS:
 #+begin_example
-<interactive>:152:28: error: [GHC-88464]
-    Variable not in scope: palette1 :: t1 -> Colour
-    Suggested fix:
-      Perhaps use one of these:
-        ‘palette’ (imported from Chart), ‘paletteO’ (imported from Chart),
-        ‘paletteR’ (imported from Chart)
-<interactive>:154:46: error: [GHC-18872]
+<interactive>:817:40: error: [GHC-83865]
+    • Couldn't match expected type: t0 -> [Double] -> [Double]
+                  with actual type: [(a0, b0)]
+    • The function ‘rebase’ is applied to three visible arguments,
+        but its type ‘Divisive b => [(a, b)] -> [(a, b)]’ has only one
+      In the third argument of ‘lchart’, namely
+        ‘(rebase n dropN (scan (dipure (+)) (snd <$> r)))’
+      In the expression:
+        lchart
+          Nothing (palette 0)
+          (rebase n dropN (scan (dipure (+)) (snd <$> r)))
+<interactive>:819:46: error: [GHC-18872]
     • Couldn't match type: Priority FrameOptions
                      with: (a0 -> Priority a0, FrameOptions)
         arising from the overloaded label ‘#frames’
@@ -546,49 +442,15 @@ disp $ mempty & #charts .~ stack' 2 0.1 ([toCT sdCharts, toCT qCountChart, toCT 
               #frames
                 %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.1)]) ::
             HudOptions -> HudOptions
-<interactive>:156:36: error: [GHC-88464]
-    Variable not in scope: palette1 :: t0 -> Colour
-    Suggested fix:
-      Perhaps use one of these:
-        ‘palette’ (imported from Chart), ‘paletteO’ (imported from Chart),
-        ‘paletteR’ (imported from Chart)
-<interactive>:158:39: error: [GHC-88464]
-    Variable not in scope: palette1 :: t0 -> Colour
-    Suggested fix:
-      Perhaps use one of these:
-        ‘palette’ (imported from Chart), ‘paletteO’ (imported from Chart),
-        ‘paletteR’ (imported from Chart)
-<interactive>:161:27: error: [GHC-88464]
-    Variable not in scope: sdChart :: ChartOptions
-    Suggested fix:
-      Perhaps use one of these:
-        data constructor ‘Chart’ (imported from Chart),
-        data constructor ‘HudChart’ (imported from Chart),
-        ‘padChart’ (imported from Chart)
-
-<interactive>:161:35: error: [GHC-88464]
-    Variable not in scope: betaChart :: ChartOptions
-
-<interactive>:161:46: error: [GHC-88464]
-    Variable not in scope: accChart :: ChartOptions
-    Suggested fix: Perhaps use ‘anyChart’ (imported from Prettychart)
-
-<interactive>:161:72: error: [GHC-88464]
+<interactive>:825:72: error: [GHC-88464]
     Variable not in scope: finishHud :: HudOptions -> HudOptions
-<interactive>:166:233: error: [GHC-88464]
-    Variable not in scope: defaultTitle :: t2 -> a5
+<interactive>:830:233: error: [GHC-88464]
+    Variable not in scope: defaultTitle :: t0 -> a5
     Suggested fix:
       Perhaps use one of these:
         ‘defaultTick’ (imported from Chart),
         ‘defaultStyle’ (imported from Chart)
-
-<interactive>:166:302: error: [GHC-88464]
-    Variable not in scope: palette1a :: t0 -> t1 -> b2
-    Suggested fix:
-      Perhaps use one of these:
-        ‘palette’ (imported from Chart), ‘paletteO’ (imported from Chart),
-        ‘paletteR’ (imported from Chart)
-<interactive>:180:117: error: [GHC-64725]
+<interactive>:844:117: error: [GHC-64725]
     • Data constructor ‘ChartOptions’ doesn't have a field named ‘charts’
     • In the first argument of ‘(.~)’, namely ‘#charts’
       In the second argument of ‘(&)’, namely ‘(#charts .~ unnamed ts')’
@@ -597,19 +459,35 @@ disp $ mempty & #charts .~ stack' 2 0.1 ([toCT sdCharts, toCT qCountChart, toCT 
           & (#hudOptions % #frames
                .~ [(Priority 30, FrameOptions (Just clear) 0.05)])
           & (#charts .~ unnamed ts')
-<interactive>:182:48: error: [GHC-88464]
+<interactive>:846:48: error: [GHC-88464]
     Variable not in scope: sdCharts :: ChartOptions
+    Suggested fix:
+      Perhaps use one of these:
+        ‘Ghci122.sdChart’ (imported from Ghci122),
+        ‘Ghci128.sdChart’ (imported from Ghci128),
+        ‘Ghci134.sdChart’ (imported from Ghci134)
 
-<interactive>:182:63: error: [GHC-88464]
+<interactive>:846:63: error: [GHC-88464]
     Variable not in scope: qCountChart :: ChartOptions
 
-<interactive>:182:102: error: [GHC-88464]
+<interactive>:846:102: error: [GHC-88464]
     Variable not in scope: decayChart :: ChartOptions
     Suggested fix:
       Perhaps use one of these:
-        ‘dayChart’ (line 76),
-        data constructor ‘RectChart’ (imported from Chart)
+        ‘dayChart’ (line 77),
+        data constructor ‘RectChart’ (imported from Chart),
+        ‘betaChart’ (line 823)
 #+end_example
+
+
+#+begin_src haskell-ng :results output
+:i rebase
+#+end_src
+
+#+RESULTS:
+: rebase :: Divisive b => [(a, b)] -> [(a, b)]
+:   	-- Defined at <interactive>:579:1
+
 
 #+begin_src haskell-ng :results output
 -- parameters

@@ -1,5 +1,6 @@
 packages:
   anal.cabal
+  ../prettychart/prettychart.cabal
 
 write-ghc-environment-files: always
 

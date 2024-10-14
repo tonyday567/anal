@@ -23,6 +23,7 @@ import Optics.Core hiding (element)
 import Prettychart
 import Web.Rep
 import Prelude qualified as P
+import NumHask.Space.Time
 
 -- $setup
 --
@@ -73,24 +74,30 @@ serve =
         )
 
 dayChart :: [Text] -> [(Day, [Double])] -> ChartOptions
-dayChart labels xs = mempty & #chartTree .~ named "day" cs & #hudOptions .~ h
+dayChart labels xs = dayChartWith PosInnerOnly (Just "%b %y") 6 labels xs
+
+dayChartWith :: PosDiscontinuous -> Maybe Text -> Int -> [Text] -> [(Day, [Double])] -> ChartOptions
+dayChartWith pos fmt nticks labels xs = mempty & #chartTree .~ named "day" cs & #hudOptions .~ h
   where
     cs = zipWith (\c xs' -> LineChart (defaultLineStyle & #color .~ c & #size .~ 0.003) [xify xs']) (palette <$> [0 ..]) (List.transpose $ snd <$> xs)
-    xaxis = Priority 5 $ timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> xs)
+    xaxis = Priority 5 $ timeXAxisWith pos fmt nticks ((\x -> UTCTime x (P.fromInteger 0)) . fst <$> xs)
 
     yaxis = Priority 5 $ defaultYAxisOptions & #place .~ PlaceLeft & #ticks % #tick .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend
     h = defaultHudOptions & #axes .~ [xaxis, yaxis] & #frames %~ (<> [Priority 30 $ defaultFrameOptions & #buffer .~ 0.1]) & #legends .~ leg
     leg =
       [ Priority 12 $
             defaultLegendOptions
-              & over #frame (fmap (set #color white))
-              & set #place PlaceRight
-              & set (#textStyle % #size) 0.15
+              & set #place PlaceBottom
+              & set #frame (Just $ border 0.01 light)
+              & set (#textStyle % #size) 0.2
               & set #legendCharts (zipWith (\t c -> (t, [c])) labels cs)
       ]
 
 dayAxis :: [Day] -> Priority AxisOptions
 dayAxis ds = Priority 5 $ timeXAxis 8 ((\x -> UTCTime x (P.fromInteger 0)) <$> ds)
+
+dayAxisWith :: PosDiscontinuous -> Maybe Text -> Int -> [Day] -> Priority AxisOptions
+dayAxisWith pos fmt nticks ds = Priority 5 $ timeXAxisWith pos fmt nticks ((\x -> UTCTime x (P.fromInteger 0)) <$> ds)
 
 -- | legend constructed from different charts
 leg' :: [Text] -> [Chart] -> ChartOptions
