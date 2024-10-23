@@ -2,6 +2,8 @@ packages:
   anal.cabal
   ../prettychart/prettychart.cabal
   ../chart-svg/chart-svg.cabal
+  ../web-rep/web-rep.cabal
+
 write-ghc-environment-files: always
 
 allow-newer: websockets:containers
