@@ -17,10 +17,13 @@ import Anal
 import Anal.Returns
 import Chart
 import Data.Time
+import Data.Maybe
+import NumHask.Space
 
 data AppType
   = SharedTest
   | PlayTest
+  | ChartPlayTest
   | DashboardTest
   | RestartTest
   | ClosureBug
@@ -36,6 +39,7 @@ parseAppType =
   flag' SharedTest (long "shared" <> help "shared test")
     <|> flag' DashboardTest (long "dash" <> help "dashboard test")
     <|> flag' PlayTest (long "play" <> help "play functionality test")
+    <|> flag' ChartPlayTest (long "chart" <> help "chart play functionality test")
     <|> flag' RestartTest (long "restart" <> help "console restart test")
     <|> flag' ClosureBug (long "closure" <> help "documents the closure bug")
     <|> pure SharedTest
@@ -61,7 +65,8 @@ main = do
   let a = optionAppType o
   case a of
     SharedTest -> sharedTest
-    PlayTest -> playTest
+    PlayTest -> playTest 1 100
+    ChartPlayTest -> chartPlayTest (Range 1 0.9) 100 1
     DashboardTest -> dashboardTest
     RestartTest -> void restartTest
     ClosureBug -> void closureBug
@@ -73,7 +78,7 @@ dashboardTest = do
     (repSdDashboardConfig defaultSdDashboardConfig)
     replaceInput
     (replaceDashboard r)
-    defaultCodeBoxConfig
+    (defaultCodeBoxConfig & #codeBoxPage .~ (dashboardPage r defaultSdDashboardConfig))
 
 -- | Convert (typically parsed representation) to Code, replacing the output section of a page, and appending errors.
 replaceDashboard :: [(Day,Double)] -> Either ByteString SdDashboardConfig -> [Code]
@@ -81,6 +86,10 @@ replaceDashboard r ea =
   case ea of
     Left err -> [Append "debug" err]
     Right a -> [Replace "output" (encodeChartOptions (sdDash a r))]
+
+dashboardPage :: [(Day, Double)] -> SdDashboardConfig -> Page
+dashboardPage r cfg =
+  defaultSocketPage & set #htmlBody ( element "div" [Attr "class" "container"] ( element "div" [Attr "class" "row"] (elementc "h1" [] "dashboard test") <> element "div" [Attr "class" "row"] (element "div" [Attr "class" "col-3"] (elementc "div" [Attr "id" "input"] mempty) <> (element "div" [Attr "class" "col-9"] (elementc "div" [Attr "id" "output"] (encodeChartOptions (sdDash cfg r)))))))
 
 sharedTest :: IO ()
 sharedTest =
@@ -90,8 +99,17 @@ sharedTest =
     replaceOutput
     defaultCodeBoxConfig
 
-playTest :: IO ()
-playTest = servePlayStream (PlayConfig True 10 0) (defaultCodeBoxConfig & #codeBoxPage .~ playPage) (countStream 100 1)
+playTest :: Double -> Int -> IO ()
+playTest t x = do
+  servePlayStream (PlayConfig True 10 0) (defaultCodeBoxConfig & #codeBoxPage .~ playPage) (countStream x t)
+
+chartPlayTest :: Range Double -> Int -> Double -> IO ()
+chartPlayTest r g t = do
+  ret' <- getReturns
+  servePlayStream (PlayConfig True 10 0) (defaultCodeBoxConfig & #codeBoxPage .~ playPage) (chartStream ret' r g t)
+
+chartStream :: [(Day, Double)] -> Range Double -> Int -> Double -> CoEmitter IO (Gap, [Code])
+chartStream ret' r g t = qList $ ((t,) . pure . Replace "output" . encodeChartOptions . flip sdDash ret' . (\x -> defaultSdDashboardConfig & set (#sdParams % #decayStd) x)) <$> grid OuterPos r g
 
 playPage :: Page
 playPage =
@@ -108,22 +126,9 @@ playPage =
               <> element
                 "div"
                 [Attr "class" "row"]
-                ( mconcat $
-                    ( \(t, h) ->
-                        element
-                          "div"
-                          [Attr "class" "row"]
-                          (element "h2" [] (elementc "div" [Attr "id" t] h))
-                    )
-                      <$> sections
-                )
-          )
-      )
-  where
-    sections =
-      [ ("input", mempty),
-        ("output", mempty)
-      ]
+                ( element "div" [Attr "class" "col-3", Attr "id" "input"] mempty <>
+                  element "div" [Attr "class" "col-9", Attr "id" "output"] mempty
+                )))
 
 restartTest :: IO (Either Bool ())
 restartTest = restart <$> (gapEffect . fmap (1,) <$> resetE 5 10) <*|> pure (glue showStdout . gapEffect <$|> countStream 100 1)
@@ -156,4 +161,5 @@ repSdDashboardConfig cfg = do
   n <- sliderVI (Just "n") 10 3000 10 (view #n cfg)
   dropN <- sliderVI (Just "dropN") 0 500 10 (view #dropN cfg)
   ps <- repSdParams (view #sdParams cfg)
-  pure (SdDashboardConfig n dropN ps (view #dashHud cfg) (view #chartHuds cfg))
+  h <- maybeRep Nothing (isJust (view #dashHeight cfg)) (sliderV (Just "height") 50 1000 50 (fromMaybe 300 $ view #dashHeight cfg))
+  pure (SdDashboardConfig n dropN ps h (view #dashHud cfg) (view #chartHuds cfg))

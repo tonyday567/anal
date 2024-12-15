@@ -3,6 +3,8 @@ packages:
   ../prettychart/prettychart.cabal
   ../chart-svg/chart-svg.cabal
   ../web-rep/web-rep.cabal
+  ../perf/perf.cabal
+  ../mealy/mealy.cabal
 
 write-ghc-environment-files: always
 

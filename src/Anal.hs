@@ -122,15 +122,16 @@ data SdDashboardConfig = SdDashboardConfig {
   n :: Int,
   dropN :: Int,
   sdParams :: SdParams,
+  dashHeight :: Maybe Double,
   dashHud :: HudOptions,
   chartHuds :: HudOptions
 } deriving (Eq, Show, Generic)
 
 defaultSdDashboardConfig :: SdDashboardConfig
-defaultSdDashboardConfig = SdDashboardConfig 1000 100 defaultSdParams mempty mempty
+defaultSdDashboardConfig = SdDashboardConfig 1000 100 defaultSdParams (Just 500) mempty mempty
 
 fs :: HudOptions
-fs = mempty & over #frames (<> [(Priority 30 $ FrameOptions (Just (border 0.01 (dark & set opac' 0.3))) HudStyleSection 0.1), (Priority 31 $ FrameOptions (Just (border 0.01 (dark & set opac' 0.3))) HudStyleSection 0.1)])
+fs = mempty & over #frames (<> [Priority 30 $ FrameOptions (Just (border 0.01 (dark & set opac' 0.3))) HudStyleSection 0.1, Priority 31 $ FrameOptions (Just (border 0.01 (dark & set opac' 0.3))) HudStyleSection 0.1])
 
 fixl :: Int -> [Double] -> Text
 fixl n xs = xs & fmap (fixed (Just n)) & intercalate "," & (\x -> "[" <> x <> "]")
@@ -146,13 +147,38 @@ irTextChart irM irSig = mempty @ChartOptions & set #chartTree (pageChart 0.1 0.1
     ts = ["ir signal = " <> fixed (Just 3) irSig, "ir market = " <> fixed (Just 3) irM]
 
 textChart :: Maybe (Rect Double) -> Double -> Style -> [Text] -> ChartTree
-textChart page gap s ts = named "textChart" ((zipWith (\x t -> TextChart s [(t, Point 0 (x*gap))]) [0..] (reverse ts)) <> maybe mempty (\r -> pure $ RectChart clear [r]) page)
+textChart page gap s ts = named "textChart" (zipWith (\x t -> TextChart s [(t, Point 0 (x*gap))]) [0..] (reverse ts) <> maybe mempty (\r -> pure $ RectChart clear [r]) page)
 
 pageChart :: Double -> Double -> Point Double -> [Text] -> ChartTree
 pageChart size gap margin ts = textChart (Just $ addPoint (Point (0.5 - _x margin) (-0.5 + fromIntegral (length ts) * gap + _y margin)) one) gap (defaultTextStyle & set #size size & set #textAnchor AnchorStart) ts
 
+sdIr :: SdDashboardConfig -> [(Day, Double)] -> SdParams -> Double
+sdIr cfg r p = ir
+  where
+    ir = fold (mIr 1) (A.arrayAs (sigret sigw))
+    n = view #n cfg
+    dropN = view #dropN cfg
+    qs = view #qs p
+    decayStd = view #decayStd p
+    decayQ = view #decayQ p
+    sigw = A.asArray $ view #sigWeights p
+
+    -- mealy: quantile sd
+    msdqs = std decayStd >>> digitize decayQ qs >>> delay1 0
+
+    -- mealy: signal, given quantile
+    msig ws = fmap (A.index ws . pure) msdqs
+    -- mealy: return signal
+    msigret ws = (*) <$> msig ws <*> id
+    -- mealy: information ratios
+    mIr d = (\m s -> (250*m)/(sqrt 250 * s)) <$> ma d <*> std d
+
+    -- calcs
+    -- signal return
+    sigret ws = r & fmap snd & reindex n dropN (scan (msigret ws)) & A.asArray
+
 sdDash :: SdDashboardConfig -> [(Day, Double)] -> ChartOptions
-sdDash cfg r = bool chart'' (error "bucket returns wrong") (0.00001 < (sum (abs <$> err0)))
+sdDash cfg r = bool chart'' (error "bucket returns wrong") (0.00001 < sum (abs <$> err0))
   where
     n = view #n cfg
     dropN = view #dropN cfg
@@ -178,7 +204,7 @@ sdDash cfg r = bool chart'' (error "bucket returns wrong") (0.00001 < (sum (abs 
     -- mealy: return signal
     msigret ws = (*) <$> msig ws <*> id
     -- mealy: information ratios
-    mIr d = (\m s -> (250*m)/(250**0.5 * s)) <$> ma d <*> std d
+    mIr d = (\m s -> (250*m)/(sqrt 250 * s)) <$> ma d <*> std d
 
     -- calcs
     ret = r & fmap snd & reindex n dropN id & A.asArray
@@ -201,15 +227,15 @@ sdDash cfg r = bool chart'' (error "bucket returns wrong") (0.00001 < (sum (abs 
     -- return chart
     rcsl = [ lchart Nothing (palette 0) (A.arrayAs retacc), lchart (Just PlaceLeft) (palette 1) (A.arrayAs retsd), lchart Nothing (palette 2) (A.arrayAs retsdbeta)]
 
-    rcs = compoundMerge rcsl & set (#hudOptions % #legends) [(Priority 20 $ defaultLegendOptions & set #place PlaceBottom & set #numStacks 3 & set #alignCharts NoAlign & set #legendCharts (zipWith (\t co -> (t, foldOf (#chartTree % charts') co)) (List.reverse ["accret", "sd", "beta sd"]) (List.reverse rcsl)))]
+    rcs = compoundMerge rcsl & set (#hudOptions % #legends) [Priority 20 $ defaultLegendOptions & set #place PlaceBottom & set #numStacks 3 & set #alignCharts NoAlign & set #legendCharts (zipWith (\t co -> (t, foldOf (#chartTree % charts') co)) (List.reverse ["accret", "sd", "beta sd"]) (List.reverse rcsl))]
 
     -- sd quantiles
     sdc = digitChart (defaultDigitChartStyle & set #decileAxisStyle (Just $ qsAxisStyle qs)) days sdqs
 
     sm = A.arrayAs $ fmap A.arrayAs $ A.extracts [1] $ A.couple 0 (accsigret sigw) retacc
 
-    -- sigmnal return chart
-    src = utcLineChart (defaultUtcLineChartStyle) (["sig","market"]) (zip days sm)
+    -- signal return chart
+    src = utcLineChart defaultUtcLineChartStyle ["sig","market"] (zip days sm)
 
     -- ir chart
     irc = irTextChart (fold (mIr 1) (A.arrayAs ret)) (fold (mIr 1) (A.arrayAs (sigret sigw)))
@@ -219,8 +245,8 @@ sdDash cfg r = bool chart'' (error "bucket returns wrong") (0.00001 < (sum (abs 
 
     bucksig = compoundMerge [sdc, sigc]
     irc' = projectChartTree (aspect 5) (toCT irc)
-    tc' = projectChartTree (aspect 1) (hori 2 [(toCT (dashboardTextChart cfg)), irc'])
+    tc' = projectChartTree (aspect 1) (hori 2 [toCT (dashboardTextChart cfg), irc'])
     rcs' = projectChartTree one (toCT rcs)
     sdc' = projectChartTree one (toCT $ bucksig & set (#markupOptions % #chartAspect) (CanvasAspect 1.5))
     src' = projectChartTree one (toCT $ src & set (#markupOptions % #chartAspect) (CanvasAspect 1.5))
-    chart'' = mempty & #chartTree .~ stack' 2 0.1 ([tc', rcs', sdc', src']) & set (#hudOptions % #titles) [Priority 5 (defaultTitleOptions "sd dashboard" & set (#style % #size) 0.06)]
+    chart'' = mempty & #chartTree .~ stack' 2 0.1 [tc', rcs', sdc', src'] & set (#hudOptions % #titles) [Priority 5 (defaultTitleOptions "sd dashboard" & set (#style % #size) 0.06)] & set (#markupOptions % #markupHeight) (view #dashHeight cfg)
