@@ -66,11 +66,10 @@ serve =
   startChartServerWith defaultSocketConfig $
     chartSocketPage Nothing
       & #htmlBody
-      .~ element
-        "div"
-        [Attr "class" "container"]
-        ( element "div" [Attr "class" "row"] $ element "div" [Attr "class" "col"] (element_ "div" [Attr "id" "prettychart"])
-        )
+        .~ element
+          "div"
+          [Attr "class" "container"]
+          (element "div" [Attr "class" "row"] $ element "div" [Attr "class" "col"] (element_ "div" [Attr "id" "prettychart"]))
 
 dayChart :: [Text] -> [(Day, [Double])] -> ChartOptions
 dayChart labels xs = mempty & #chartTree .~ named "day" cs & #hudOptions .~ h
@@ -82,11 +81,11 @@ dayChart labels xs = mempty & #chartTree .~ named "day" cs & #hudOptions .~ h
     h = defaultHudOptions & #axes .~ [xaxis, yaxis] & #frames %~ (<> [Priority 30 $ defaultFrameOptions & #buffer .~ 0.1]) & #legends .~ leg
     leg =
       [ Priority 12 $
-            defaultLegendOptions
-              & over #frame (fmap (set #color white))
-              & set #place PlaceRight
-              & set (#textStyle % #size) 0.15
-              & set #legendCharts (zipWith (\t c -> (t, [c])) labels cs)
+          defaultLegendOptions
+            & over #frame (fmap (set #color white))
+            & set #place PlaceRight
+            & set (#textStyle % #size) 0.15
+            & set #legendCharts (zipWith (\t c -> (t, [c])) labels cs)
       ]
 
 dayAxis :: [Day] -> Priority AxisOptions
@@ -97,14 +96,14 @@ leg' :: [Text] -> [Chart] -> ChartOptions
 leg' labels cs =
   mempty
     & #hudOptions
-    % #legends
-    .~ [ Priority 12 $
+      % #legends
+      .~ [ Priority 12 $
              defaultLegendOptions
                & over #frame (fmap (set #color white))
                & set #place PlaceRight
                & set (#textStyle % #size) 0.15
                & set #legendCharts (zipWith (\t c -> (t, [c])) labels cs)
-       ]
+         ]
 
 -- | line chart with vertical axis, no guideline ticks
 lchart :: Maybe Place -> Colour -> [Double] -> ChartOptions

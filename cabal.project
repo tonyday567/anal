@@ -1,3 +1,4 @@
 packages:
   anal.cabal
 
+allow-newer: *:base, *:template-haskell
