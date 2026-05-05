@@ -19,7 +19,6 @@ analysis: the prefix
 import Anal
 import Anal.Returns
 import Control.Monad
-import qualified FlatParse.Basic as FP
 import Data.Time
 import Data.Time.Calendar
 import qualified Data.ByteString as BS

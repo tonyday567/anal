@@ -18,7 +18,6 @@ analysis: the prefix
 :set -XRebindableSyntax
 :set -XTupleSections
 import Anal
-import qualified FlatParse.Basic as FP
 import Data.Time
 import Data.Time.Calendar
 import qualified Data.ByteString as BS

@@ -28,7 +28,6 @@ import Prelude qualified as P
 --
 -- >>> :set -XOverloadedStrings
 -- >>> import Anal
--- >>> import FlatParse.Basic
 -- >>> import Data.Time.Calendar
 
 -- | Take the last n of a list.
@@ -70,6 +69,9 @@ serve =
           "div"
           [Attr "class" "container"]
           (element "div" [Attr "class" "row"] $ element "div" [Attr "class" "col"] (element_ "div" [Attr "id" "prettychart"]))
+
+timeXAxis :: Int -> [UTCTime] -> AxisOptions
+timeXAxis n xs = utcAxis (defaultUtcAxisStyle & set #nTicks n) xs
 
 dayChart :: [Text] -> [(Day, [Double])] -> ChartOptions
 dayChart labels xs = mempty & #chartTree .~ named "day" cs & #hudOptions .~ h
@@ -134,10 +136,3 @@ rebase n n' xs = fmap (/ head xs') xs'
 reindex :: Int -> Int -> ([a] -> [b]) -> [a] -> [b]
 reindex n n' f xs = drop n' $ f $ taker (n + n') xs
 
--- | Stack a list of tree charts horizontally, then vertically (proceeding downwards which is opposite to the usual coordinate reference system but inutitively the way people read charts)
-stack' :: Int -> Double -> [ChartTree] -> ChartTree
-stack' _ _ [] = mempty
-stack' n gap cs = vert gap (reverse $ hori gap <$> group' cs [])
-  where
-    group' [] acc = reverse acc
-    group' x acc = group' (drop n x) (take n x : acc)

@@ -1,13 +1,13 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RebindableSyntax #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
 module Anal.Returns where
 
 import Chart
 import Data.Bifunctor
+import Data.ByteString (ByteString) 
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as C
 import Data.Map qualified as Map
@@ -17,64 +17,56 @@ import Data.Profunctor
 import Data.Text (unpack)
 import Data.Time
 import Data.Time.Format.ISO8601
-import FlatParse.Basic
-  ( char,
-    isDigit,
-    satisfy,
-  )
-import MarkupParse
-import MarkupParse.FlatParse
-import NumHask.Prelude hiding (diff, fold)
+import Mpar (Parser, char, isDigit, satisfy, double, int, signed, strToUtf8)
+import Data.These (These (..))
+import Mpar.Parser (StateThreader (..))
+import NumHask.Prelude hiding (diff, fold, some)
 
 -- $setup
 --
 -- >>> :set -XOverloadedStrings
 -- >>> import Anal.Returns
--- >>> import FlatParse.Basic
+-- >>> import Mpar.Parser
 -- >>> import Data.Time.Calendar
+
 
 -- | Day parser, consumes separator
 --
 -- >>> runParser dayP "2020-07-28"
 -- OK 2020-07-28 ""
-dayP :: Parser e Day
+dayP :: Parser ByteString Day
 dayP = do
   y <- int
-  _ <- $(char '-')
+  _ <- char '-'
   m <- int
-  _ <- $(char '-')
+  _ <- char '-'
   d <- int
   pure $ fromGregorian (fromIntegral y) m d
 
-fredP :: Parser e (Day, Either () Double)
-fredP = (,) <$> dayP <*> (($(char ',')) *> (Right <$> double))
-
-runParserError :: Parser e a -> BS.ByteString -> a
-runParserError p bs = case runParser p bs of
-  OK r _ -> r
-  _ -> error "uncaught flatparse error"
+fredP :: Parser ByteString (Day, Either () Double)
+fredP = (,) <$> dayP <*> ((char ',') *> (Right <$> double))
 
 -- | Day parser, consumes separator
 --
 -- >>> runParser dayP' "07/10/1999"
 -- OK 1999-10-07 ""
-dayP' :: Parser e Day
+dayP' :: Parser ByteString Day
 dayP' = do
   d <- int
-  _ <- $(char '/')
+  _ <- char '/'
   m <- int
-  _ <- $(char '/')
+  _ <- char '/'
   y <- int
   pure $ fromGregorian (fromIntegral y) m d
 
-quoted :: Parser e a -> Parser e a
-quoted p = $(char '"') *> p <* $(char '"')
+quoted :: Parser ByteString a -> Parser ByteString a
+quoted p = char '"' *> p <* char '"'
 
-numString :: Parser e String
+numString :: Parser ByteString String
 numString = filter (/= ',') <$> some (satisfy (\x -> isDigit x || (x == '.') || (x == ',')))
 
-auinvP :: Parser e (Day, String)
-auinvP = (,) <$> quoted dayP' <*> (($(char ',')) *> quoted numString)
+auinvP :: Parser ByteString (Day, String)
+auinvP = (,) <$> quoted dayP' <*> ((char ',') *> quoted numString)
 
 getPricesFred :: IO [(Day, Double)]
 getPricesFred = do
@@ -119,8 +111,8 @@ writeReturns r =
       . bimap (formatShow iso8601Format) (fixed (Just 6))
       <$> r
 
-dayReturnP :: Parser e (Day, Double)
-dayReturnP = (,) <$> dayP <*> ($(char ',') *> signed double)
+dayReturnP :: Parser ByteString (Day, Double)
+dayReturnP = (,) <$> dayP <*> (char ',' *> signed double)
 
 getReturns :: IO [(Day, Double)]
 getReturns = do

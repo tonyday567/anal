@@ -1,4 +1,8 @@
 packages:
   anal.cabal
+  ../markup-parse/markup-parse.cabal
+  ../mpar/mpar.cabal
+  ../web-rep/web-rep.cabal
+  ../chart-svg/chart-svg.cabal
 
-allow-newer: *:base, *:template-haskell
+allow-newer: *:base, *:template-haskell, *:markup-parse, *:web-rep, *:chart-svg
