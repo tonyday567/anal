@@ -17,16 +17,15 @@ import Data.Profunctor
 import Data.Text (unpack)
 import Data.Time
 import Data.Time.Format.ISO8601
-import Mpar (Parser, isDigit, satisfy, double, int, signed, strToUtf8, token, runParserMaybe, runParserError)
-import Control.Applicative (some)
-import Data.These (These (..))
+import Circuit.Parser (Parser, satisfy, runParserMaybe, runParserError, char, some)
+import Circuit.Parser.Primitives (isDigit, double, int, signed, strToUtf8)
 import NumHask.Prelude hiding (diff, fold, some)
 
 -- $setup
 --
 -- >>> :set -XOverloadedStrings
 -- >>> import Anal.Returns
--- >>> import Mpar.Parser
+-- >>> -- import Mpar.Parser
 -- >>> import Data.Time.Calendar
 
 
@@ -34,39 +33,39 @@ import NumHask.Prelude hiding (diff, fold, some)
 --
 -- >>> runParser dayP "2020-07-28"
 -- OK 2020-07-28 ""
-dayP :: Parser ByteString () Day
+dayP :: Parser ByteString Char Day
 dayP = do
   y <- int
-  _ <- token '-'
+  _ <- char '-'
   m <- int
-  _ <- token '-'
+  _ <- char '-'
   d <- int
-  pure $ fromGregorian (fromIntegral y) m d
+  pure $ fromGregorian (fromIntegral y :: Integer) m d
 
-fredP :: Parser ByteString () (Day, Either () Double)
-fredP = (,) <$> dayP <*> ((token ',') *> (Right <$> double))
+fredP :: Parser ByteString Char (Day, Either () Double)
+fredP = (,) <$> dayP <*> ((char ',') *> (Right <$> double))
 
 -- | Day parser, consumes separator
 --
 -- >>> runParser dayP' "07/10/1999"
 -- OK 1999-10-07 ""
-dayP' :: Parser ByteString () Day
+dayP' :: Parser ByteString Char Day
 dayP' = do
   d <- int
-  _ <- token '/'
+  _ <- char '/'
   m <- int
-  _ <- token '/'
+  _ <- char '/'
   y <- int
-  pure $ fromGregorian (fromIntegral y) m d
+  pure $ fromGregorian (fromIntegral y :: Integer) m d
 
-quoted :: Parser ByteString () a -> Parser ByteString () a
-quoted p = token '"' *> p <* token '"'
+quoted :: Parser ByteString Char a -> Parser ByteString Char a
+quoted p = char '"' *> p <* char '"'
 
-numString :: Parser ByteString () String
+numString :: Parser ByteString Char String
 numString = filter (/= ',') <$> some (satisfy (\x -> isDigit x || (x == '.') || (x == ',')))
 
-auinvP :: Parser ByteString () (Day, String)
-auinvP = (,) <$> quoted dayP' <*> ((token ',') *> quoted numString)
+auinvP :: Parser ByteString Char (Day, String)
+auinvP = (,) <$> quoted dayP' <*> ((char ',') *> quoted numString)
 
 getPricesFred :: IO [(Day, Double)]
 getPricesFred = do
@@ -111,8 +110,8 @@ writeReturns r =
       . bimap (formatShow iso8601Format) (fixed (Just 6))
       <$> r
 
-dayReturnP :: Parser ByteString () (Day, Double)
-dayReturnP = (,) <$> dayP <*> (token ',' *> signed double)
+dayReturnP :: Parser ByteString Char (Day, Double)
+dayReturnP = (,) <$> dayP <*> (char ',' *> signed double)
 
 getReturns :: IO [(Day, Double)]
 getReturns = do

@@ -42,7 +42,6 @@ library
     containers >=0.6,
     faker,
     circuits-parser >=0.1 && <0.2,
-    mpar,
     these,
     mealy >=0.4,
     numhask >=0.13,
