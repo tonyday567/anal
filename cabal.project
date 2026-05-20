@@ -1,6 +1,5 @@
 packages:
   anal.cabal
-  ../mpar/mpar.cabal
   ../web-rep/web-rep.cabal
   ../chart-svg/chart-svg.cabal
   ../prettychart/prettychart.cabal
