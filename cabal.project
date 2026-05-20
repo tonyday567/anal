@@ -1,9 +1,9 @@
 packages:
   anal.cabal
-  ../markup-parse/markup-parse.cabal
   ../mpar/mpar.cabal
   ../web-rep/web-rep.cabal
   ../chart-svg/chart-svg.cabal
+  ../prettychart/prettychart.cabal
   ../circuits-parser/circuits-parser.cabal
   ../circuits/circuits.cabal
 

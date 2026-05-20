@@ -7,6 +7,7 @@
 module Anal where
 
 import Chart
+import Chart.Markup (renderChartOptions)
 import Data.Foldable hiding (fold)
 import Data.List qualified as List
 import Data.Map qualified as Map
@@ -17,11 +18,9 @@ import Data.Profunctor
 import Data.Text (Text, pack)
 import Data.Time
 import GHC.OverloadedLabels
-import MarkupParse
 import NumHask.Prelude hiding (fold)
 import Optics.Core hiding (element)
 import Prettychart
-import Web.Rep
 import Prelude qualified as P
 
 -- $setup
@@ -61,14 +60,9 @@ qRangeLabel =
     )
 
 serve :: IO (ChartOptions -> IO Bool, IO ())
-serve =
-  startChartServerWith defaultSocketConfig $
-    chartSocketPage Nothing
-      & #htmlBody
-        .~ element
-          "div"
-          [Attr "class" "container"]
-          (element "div" [Attr "class" "row"] $ element "div" [Attr "class" "col"] (element_ "div" [Attr "id" "prettychart"]))
+serve = do
+  (sendText, quit) <- startChartServerPush defaultChartServerConfig
+  pure (\opts -> sendText (renderChartOptions opts), quit)
 
 timeXAxis :: Int -> [UTCTime] -> AxisOptions
 timeXAxis n xs = utcAxis (defaultUtcAxisStyle & set #nTicks n) xs

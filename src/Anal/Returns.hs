@@ -17,9 +17,9 @@ import Data.Profunctor
 import Data.Text (unpack)
 import Data.Time
 import Data.Time.Format.ISO8601
-import Mpar (Parser, char, isDigit, satisfy, double, int, signed, strToUtf8)
+import Mpar (Parser, isDigit, satisfy, double, int, signed, strToUtf8, token, runParserMaybe, runParserError)
+import Control.Applicative (some)
 import Data.These (These (..))
-import Mpar.Parser (StateThreader (..))
 import NumHask.Prelude hiding (diff, fold, some)
 
 -- $setup
@@ -34,39 +34,39 @@ import NumHask.Prelude hiding (diff, fold, some)
 --
 -- >>> runParser dayP "2020-07-28"
 -- OK 2020-07-28 ""
-dayP :: Parser ByteString Day
+dayP :: Parser ByteString () Day
 dayP = do
   y <- int
-  _ <- char '-'
+  _ <- token '-'
   m <- int
-  _ <- char '-'
+  _ <- token '-'
   d <- int
   pure $ fromGregorian (fromIntegral y) m d
 
-fredP :: Parser ByteString (Day, Either () Double)
-fredP = (,) <$> dayP <*> ((char ',') *> (Right <$> double))
+fredP :: Parser ByteString () (Day, Either () Double)
+fredP = (,) <$> dayP <*> ((token ',') *> (Right <$> double))
 
 -- | Day parser, consumes separator
 --
 -- >>> runParser dayP' "07/10/1999"
 -- OK 1999-10-07 ""
-dayP' :: Parser ByteString Day
+dayP' :: Parser ByteString () Day
 dayP' = do
   d <- int
-  _ <- char '/'
+  _ <- token '/'
   m <- int
-  _ <- char '/'
+  _ <- token '/'
   y <- int
   pure $ fromGregorian (fromIntegral y) m d
 
-quoted :: Parser ByteString a -> Parser ByteString a
-quoted p = char '"' *> p <* char '"'
+quoted :: Parser ByteString () a -> Parser ByteString () a
+quoted p = token '"' *> p <* token '"'
 
-numString :: Parser ByteString String
+numString :: Parser ByteString () String
 numString = filter (/= ',') <$> some (satisfy (\x -> isDigit x || (x == '.') || (x == ',')))
 
-auinvP :: Parser ByteString (Day, String)
-auinvP = (,) <$> quoted dayP' <*> ((char ',') *> quoted numString)
+auinvP :: Parser ByteString () (Day, String)
+auinvP = (,) <$> quoted dayP' <*> ((token ',') *> quoted numString)
 
 getPricesFred :: IO [(Day, Double)]
 getPricesFred = do
@@ -111,8 +111,8 @@ writeReturns r =
       . bimap (formatShow iso8601Format) (fixed (Just 6))
       <$> r
 
-dayReturnP :: Parser ByteString (Day, Double)
-dayReturnP = (,) <$> dayP <*> (char ',' *> signed double)
+dayReturnP :: Parser ByteString () (Day, Double)
+dayReturnP = (,) <$> dayP <*> (token ',' *> signed double)
 
 getReturns :: IO [(Day, Double)]
 getReturns = do
