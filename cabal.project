@@ -1,10 +1,12 @@
 packages:
   anal.cabal
-  ../web-rep/web-rep.cabal
   ../chart-svg/chart-svg.cabal
   ../prettychart/prettychart.cabal
   ../circuits-parser/circuits-parser.cabal
   ../circuits/circuits.cabal
+  ../numhask/numhask.cabal
+  ../numhask-space/numhask-space.cabal
+  ../formatn/formatn.cabal
 
 write-ghc-environment-files: always
 

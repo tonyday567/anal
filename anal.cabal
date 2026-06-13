@@ -54,4 +54,14 @@ library
 
   exposed-modules:
     Anal
+    Anal.Refresh
     Anal.Returns
+
+executable refresh-results
+  import: ghc-options-stanza
+  import: ghc2021-stanza
+  main-is: RefreshResults.hs
+  hs-source-dirs: app
+  build-depends:
+    anal,
+    base >=4.7 && <5,

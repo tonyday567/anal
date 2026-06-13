@@ -25,14 +25,14 @@ import NumHask.Prelude hiding (diff, fold, some)
 --
 -- >>> :set -XOverloadedStrings
 -- >>> import Anal.Returns
--- >>> -- import Mpar.Parser
+-- >>> import Circuit.Parser
 -- >>> import Data.Time.Calendar
 
 
 -- | Day parser, consumes separator
 --
 -- >>> runParser dayP "2020-07-28"
--- OK 2020-07-28 ""
+-- These 2020-07-28 ""
 dayP :: Parser ByteString Char Day
 dayP = do
   y <- int
@@ -48,7 +48,7 @@ fredP = (,) <$> dayP <*> ((char ',') *> (Right <$> double))
 -- | Day parser, consumes separator
 --
 -- >>> runParser dayP' "07/10/1999"
--- OK 1999-10-07 ""
+-- These 1999-10-07 ""
 dayP' :: Parser ByteString Char Day
 dayP' = do
   d <- int
@@ -107,7 +107,7 @@ writeReturns r =
   writeFile "other/returns.csv"
     . unlines
     $ (\(d, r') -> d <> "," <> unpack r')
-      . bimap (formatShow iso8601Format) (fixed (Just 6))
+      . bimap (formatShow iso8601Format) (fixed (Just 12))
       <$> r
 
 dayReturnP :: Parser ByteString Char (Day, Double)
