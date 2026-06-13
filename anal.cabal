@@ -42,6 +42,7 @@ library
     containers >=0.6,
     faker,
     circuits-parser >=0.1 && <0.2,
+    harpie >=0.1 && <0.3,
     these,
     mealy >=0.4,
     numhask >=0.13,
@@ -54,6 +55,7 @@ library
 
   exposed-modules:
     Anal
+    Anal.Model
     Anal.Refresh
     Anal.Returns
 

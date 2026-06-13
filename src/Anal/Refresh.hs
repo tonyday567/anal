@@ -10,6 +10,7 @@ module Anal.Refresh
 where
 
 import Anal
+import Anal.Model
 import Anal.Returns
 import Chart
 import Data.Bifunctor
@@ -102,5 +103,14 @@ refresh = do
       reconPrices' = P.reverse priceBack'
       maxPriceErr' = P.maximum $ P.zipWith (\a b -> abs (a - b)) ps reconPrices'
   putStrLn $ "price inversion (full precision returns) max error: " <> show maxPriceErr'
+
+  modelSummary returns
+
+  -- volatility model chart (last 1000 days)
+  let vm = volatilityModel returns
+      volData = P.drop (P.length r - 1000) $ P.zip (fst <$> r) (P.zipWith (\s p -> [s, p]) (stdSeries vm) (predStd vm))
+      volChart = dayChart ["std", "predicted std"] volData
+  writeChartOptions "other/vol.svg" volChart
+  putStrLn "wrote other/vol.svg"
 
   putStrLn "refresh complete"
