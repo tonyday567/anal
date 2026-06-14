@@ -42,6 +42,7 @@ library
     containers >=0.6,
     faker,
     formatn >=0.3 && <0.4,
+    random >=1.2 && <1.4,
     circuits-parser >=0.1 && <0.2,
     harpie >=0.1 && <0.3,
     these,

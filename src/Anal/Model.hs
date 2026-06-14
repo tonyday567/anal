@@ -13,12 +13,14 @@
 module Anal.Model
   ( RegResult (..),
     SignForecastResult (..),
+    SimResult (..),
     MagnitudeResult (..),
     magnitudeModel,
     garchMealy,
     signForecast,
     modelStats,
     modelSummary,
+    simulateStrategy,
   )
 where
 
@@ -27,6 +29,7 @@ import Data.Mealy
 import Data.Mealy.Quantiles
 import Data.Text (Text, unpack)
 import NumHask.Prelude hiding (fold)
+import System.Random
 import qualified Prelude as P
 
 -- | Lag a series by one observation, filling the first slot with a default.
@@ -65,8 +68,22 @@ data RegResult = RegResult
 -- | Result of a quantile-bucketed sign forecast.
 data SignForecastResult = SignForecastResult
   { sfName :: Text,
-    sfBuckets :: [(Int, Double, Double, Double)]
+    sfThresholds :: [Double],
+    sfBuckets :: [(Int, Double, Double, Double)],
     -- ^ (bucket label, mean next-day return, std of next-day returns, count)
+    sfBucketReturns :: Map.Map Int [Double]
+  }
+  deriving (Show)
+
+-- | Result of a Monte-Carlo simulation of the bucket model.
+data SimResult = SimResult
+  { simStrategyFinals :: [Double],
+    simBuyHoldFinals :: [Double],
+    simStrategyMean :: Double,
+    simStrategyStd :: Double,
+    simBuyHoldMean :: Double,
+    simBuyHoldStd :: Double,
+    simBeatFraction :: Double
   }
   deriving (Show)
 
@@ -169,9 +186,13 @@ signForecast name sig qs rs =
       sumMapM = M (\(v, k) -> Map.singleton k v) (\m (v, k) -> Map.insertWith (+) k v m) id
       sqSumMapM = M (\(v, k) -> Map.singleton k (v * v)) (\m (v, k) -> Map.insertWith (+) k (v * v) m) id
       countMapM = M (\a -> Map.singleton a one) (\m a -> Map.insertWith (+) a one m) id
+      returnsMapM = M (\(v, k) -> Map.singleton k [v]) (\m (v, k) -> Map.insertWith (++) k [v] m) id
       sums = fold sumMapM sigged
       sqSums = fold sqSumMapM sigged
       counts = fold countMapM (snd <$> sigged)
+      returnsMap = fold returnsMapM sigged
+      signalSeries = P.drop 1000 $ scan sig rs
+      thresholds = fold (quantiles 0.996 qs) signalSeries
       bucketStats k =
         let n = counts Map.! k
             s = sums Map.! k
@@ -179,7 +200,63 @@ signForecast name sig qs rs =
             mean = s / n
             var = ss / n - mean * mean
          in (k, mean, sqrt var, n)
-   in SignForecastResult name (P.map (\(k, _) -> bucketStats k) (Map.toAscList sums))
+   in SignForecastResult
+        { sfName = name,
+          sfThresholds = thresholds,
+          sfBuckets = P.map (\(k, _) -> bucketStats k) (Map.toAscList sums),
+          sfBucketReturns = returnsMap
+        }
+
+-- | Determine the quantile bucket of a signal value given estimated thresholds.
+toBucket :: [Double] -> Double -> Int
+toBucket thresholds x = P.length (P.takeWhile (<= x) thresholds)
+
+-- | Simulate many paths from the bucket residual model and apply a set of
+-- bucket weights.  Returns are bootstrapped within each bucket, preserving
+-- the empirical residual distribution.
+simulateStrategy ::
+  SignForecastResult ->
+  -- | weight per bucket (0..5)
+  [Double] ->
+  -- | number of paths
+  Int ->
+  -- | path length
+  Int ->
+  IO SimResult
+simulateStrategy sf weights nPaths len = do
+  gen <- newStdGen
+  let thresholds = sfThresholds sf
+      bucketReturns = sfBucketReturns sf
+      returnsFor b = Map.findWithDefault [] b bucketReturns
+      draw g b =
+        let rs = returnsFor b
+            (idx, g') = randomR (0, P.length rs - 1) g
+         in (rs P.!! idx, g')
+      path g0 =
+        let loop _ 0 _ stratAcc bhAcc = (stratAcc, bhAcc)
+            loop g k prevR stratAcc bhAcc =
+              let b = toBucket thresholds prevR
+                  (r, g') = draw g b
+                  w = weights P.!! b
+                  stratAcc' = stratAcc + w * r
+                  bhAcc' = bhAcc + r
+               in loop g' (k - 1) r stratAcc' bhAcc'
+            (stratFinal, bhFinal) = loop g0 len 0 0 0
+         in (stratFinal, bhFinal)
+      loopPaths _ 0 stratAcc bhAcc = (P.reverse stratAcc, P.reverse bhAcc)
+      loopPaths g k stratAcc bhAcc =
+        let (g1, g2) = split g
+            (s, b) = path g1
+         in loopPaths g2 (k - 1) (s : stratAcc) (b : bhAcc)
+      (stratFinals, bhFinals) = loopPaths gen nPaths [] []
+      meanS = fold (ma 1) stratFinals :: Double
+      stdS = fold (std 1) stratFinals :: Double
+      meanB = fold (ma 1) bhFinals :: Double
+      stdB = fold (std 1) bhFinals :: Double
+      beat :: Double
+      beat = fromIntegral (P.length (P.filter (\(s, b) -> s > b) (P.zip stratFinals bhFinals))) / fromIntegral nPaths
+      result = SimResult stratFinals bhFinals meanS stdS meanB stdB beat
+  pure result
 
 -- | Fit all the magnitude models and return their statistics.
 modelStats :: [Double] -> [RegResult]

@@ -41,8 +41,8 @@ row r =
       "</tr>"
     ]
 
-writeDashboard :: [RegResult] -> SignForecastResult -> (Double, Double, Double) -> IO ()
-writeDashboard stats signResult (stratFinal, bhFinal, avgWeight) = do
+writeDashboard :: [RegResult] -> SignForecastResult -> (Double, Double, Double) -> SimResult -> IO ()
+writeDashboard stats signResult (stratFinal, bhFinal, avgWeight) sim = do
   let bestR2 = P.maximum (P.map regR2 stats)
       html =
         mconcat
@@ -56,6 +56,7 @@ writeDashboard stats signResult (stratFinal, bhFinal, avgWeight) = do
             magSection,
             signSection,
             stratSection stratFinal bhFinal avgWeight,
+            simSection sim stratFinal bhFinal,
             "</body>\n</html>\n"
           ]
   writeFile "other/dashboard.html" (unpack html)
@@ -128,6 +129,20 @@ writeDashboard stats signResult (stratFinal, bhFinal, avgWeight) = do
           "<tr><td>buy &amp; hold final return</td><td>" <> fmt bhFinal <> "</td></tr>",
           "<tr><td>average position size</td><td>" <> fmt avgWeight <> "</td></tr>",
           "<tr><td>strategy scaled to 100% average exposure</td><td>" <> fmt (stratFinal / avgWeight) <> "</td></tr>",
+          "</tbody></table>"
+        ]
+    simSection sim stratFinal bhFinal =
+      mconcat
+        [ "<h2>Monte-Carlo simulation</h2>",
+          "<p class=\"subtitle\">We simulate 1000 paths from the bucket residual model: each day's return is bootstrapped from the empirical returns in the bucket determined by the previous day's return. The same bucket weights are applied, so the histograms below show the distribution of final log-returns we might expect from the model. Red dots mark the actual historical outcome.</p>",
+          "<div class=\"row\">",
+          "<div class=\"card\"><h3>Signal strategy finals</h3><img src=\"sim_strat_hist.svg\" alt=\"Simulated strategy histogram\"></div>",
+          "<div class=\"card\"><h3>Buy &amp; hold finals</h3><img src=\"sim_bh_hist.svg\" alt=\"Simulated buy-hold histogram\"></div>",
+          "</div>",
+          "<table><thead><tr><th>metric</th><th>actual</th><th>simulated mean</th><th>simulated std</th></tr></thead><tbody>",
+          "<tr><td>signal strategy final return</td><td>" <> fmt stratFinal <> "</td><td>" <> fmt (simStrategyMean sim) <> "</td><td>" <> fmt (simStrategyStd sim) <> "</td></tr>",
+          "<tr><td>buy &amp; hold final return</td><td>" <> fmt bhFinal <> "</td><td>" <> fmt (simBuyHoldMean sim) <> "</td><td>" <> fmt (simBuyHoldStd sim) <> "</td></tr>",
+          "<tr><td>fraction of paths where strategy beats buy-hold</td><td>-</td><td>" <> fmt (simBeatFraction sim) <> "</td><td>-</td></tr>",
           "</tbody></table>"
         ]
 
@@ -260,6 +275,23 @@ refresh = do
   putStrLn $ "buy & hold final return:      " <> show (P.last bhCum)
   putStrLn $ "average signal weight:        " <> show avgWeight
 
-  writeDashboard (modelStats returns) signResult (P.last stratCum, P.last bhCum, avgWeight)
+  -- Monte-Carlo simulation of the bucket residual model
+  let bucketWeights = [1.0, 0.8, 0.6, 0.4, 0.2, 0.0] :: [Double]
+  sim <- simulateStrategy signResult bucketWeights 1000 (P.length sigged)
+  let simStrat = simStrategyFinals sim
+      simBH = simBuyHoldFinals sim
+      simStratRange = maybe (Range 0 5) id (space1 simStrat)
+      simBHRange = maybe (Range 0 5) id (space1 simBH)
+  writeChartOptions "other/sim_strat_hist.svg" (histChart simStratRange 40 simStrat)
+  putStrLn "wrote other/sim_strat_hist.svg"
+  writeChartOptions "other/sim_bh_hist.svg" (histChart simBHRange 40 simBH)
+  putStrLn "wrote other/sim_bh_hist.svg"
+  putStrLn $ "simulation strategy mean: " <> show (simStrategyMean sim)
+  putStrLn $ "simulation buy-hold mean: " <> show (simBuyHoldMean sim)
+  putStrLn $ "simulation strategy std:  " <> show (simStrategyStd sim)
+  putStrLn $ "simulation buy-hold std:  " <> show (simBuyHoldStd sim)
+  putStrLn $ "strategy beats buy-hold:  " <> show (simBeatFraction sim)
+
+  writeDashboard (modelStats returns) signResult (P.last stratCum, P.last bhCum, avgWeight) sim
 
   putStrLn "refresh complete"
