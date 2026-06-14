@@ -6,9 +6,14 @@
 -- return, |r_t|.  Mealy statistics such as the online standard deviation are
 -- natural predictors of magnitude, but the returns themselves are barely
 -- predictable.
+--
+-- A GARCH(1,1) variance update is also a Mealy machine:
+--
+-- > h_t = omega + alpha * r_{t-1}^2 + beta * h_{t-1}
 module Anal.Model
   ( MagnitudeResult (..),
     magnitudeModel,
+    garchMealy,
     modelSummary,
   )
 where
@@ -45,7 +50,8 @@ data MagnitudeResult = MagnitudeResult
     avgStdSeries :: [Double],
     magAlpha :: Double,
     magBeta :: Double,
-    predMagnitude :: [Double]
+    predMagnitude :: [Double],
+    residuals :: [Double]
   }
   deriving (Show)
 
@@ -61,14 +67,39 @@ magnitudeModel rs =
       as = scan (ma 0.01) s
       sL = lag1 0 s
       (intercept, slope) = simpleReg one sL absR
+      predMag = P.map (\x -> intercept + slope * x) sL
    in MagnitudeResult
         { absReturns = absR,
           stdSeries = s,
           avgStdSeries = as,
           magAlpha = intercept,
           magBeta = slope,
-          predMagnitude = P.map (\x -> intercept + slope * x) sL
+          predMagnitude = predMag,
+          residuals = P.zipWith (-) absR predMag
         }
+
+-- | A GARCH(1,1) variance Mealy: given a return, update the conditional
+-- variance and emit the conditional standard deviation for the next period.
+garchMealy ::
+  -- | initial variance h_0
+  Double ->
+  -- | omega
+  Double ->
+  -- | alpha
+  Double ->
+  -- | beta
+  Double ->
+  Mealy Double Double
+
+garchMealy h0 omega alphaG betaG = M inject step extract
+  where
+    inject r =
+      let h = omega + alphaG * r * r + betaG * h0
+       in (h, sqrt h)
+    step (hPrev, _) r =
+      let h = omega + alphaG * r * r + betaG * hPrev
+       in (h, sqrt h)
+    extract = snd
 
 -- | Summary statistics for a residual series.
 residualSummary :: [Double] -> IO ()
@@ -108,4 +139,17 @@ modelSummary rs = do
   putStrLn $ "|r_t| ~ |r_{t-1}|:        alpha=" <> show a3 <> " beta=" <> show b3 <> " R^2=" <> show (rSquared absRL absR a3 b3)
   residualSummary (P.zipWith (-) absR (P.map (\x -> a3 + b3 * x) absRL))
 
-  putStrLn $ "observations: " <> show (P.length rs)
+  putStrLn "--- GARCH(1,1) as Mealy ---"
+  let n = P.length rs
+      h0 = fold (std one) (P.take 1000 rs) ** 2
+      -- Typical GARCH(1,1) parameters: alpha=0.1, beta=0.85, omega chosen for
+      -- a stationary variance equal to the in-sample variance.
+      var = fold (std one) rs ** 2
+      omega = var * (1 - 0.1 - 0.85)
+      garchStd = scan (garchMealy h0 omega 0.1 0.85) rs
+      garchStdL = lag1 0 garchStd
+      (a4, b4) = simpleReg one garchStdL absR
+  putStrLn $ "|r_t| ~ garch_std_{t-1}:  alpha=" <> show a4 <> " beta=" <> show b4 <> " R^2=" <> show (rSquared garchStdL absR a4 b4)
+  residualSummary (P.zipWith (-) absR (P.map (\x -> a4 + b4 * x) garchStdL))
+
+  putStrLn $ "observations: " <> show n

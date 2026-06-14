@@ -113,4 +113,15 @@ refresh = do
   writeChartOptions "other/mag.svg" magChart
   putStrLn "wrote other/mag.svg"
 
+  -- residual histograms
+  let res = P.drop 1000 $ residuals mm
+      resStd = fold (std one) res
+      stdRes = P.map (/ resStd) res
+      resRange = maybe (Range (-1) 1) id (space1 res)
+      stdResRange = maybe (Range (-5) 5) id (space1 stdRes)
+  writeChartOptions "other/resid_hist.svg" (histChart resRange 60 res)
+  putStrLn "wrote other/resid_hist.svg"
+  writeChartOptions "other/stdresid_hist.svg" (histChart stdResRange 60 stdRes)
+  putStrLn "wrote other/stdresid_hist.svg"
+
   putStrLn "refresh complete"
