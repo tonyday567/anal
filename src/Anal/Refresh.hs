@@ -41,8 +41,8 @@ row r =
       "</tr>"
     ]
 
-writeDashboard :: [RegResult] -> SignForecastResult -> IO ()
-writeDashboard stats signResult = do
+writeDashboard :: [RegResult] -> SignForecastResult -> (Double, Double, Double) -> IO ()
+writeDashboard stats signResult (stratFinal, bhFinal, avgWeight) = do
   let bestR2 = P.maximum (P.map regR2 stats)
       html =
         mconcat
@@ -55,6 +55,7 @@ writeDashboard stats signResult = do
             histSection,
             magSection,
             signSection,
+            stratSection stratFinal bhFinal avgWeight,
             "</body>\n</html>\n"
           ]
   writeFile "other/dashboard.html" (unpack html)
@@ -117,6 +118,18 @@ writeDashboard stats signResult = do
         ]
     signRow (b, m, s, n) =
       "<tr><td>" <> pack (show b) <> "</td><td>" <> fmt m <> "</td><td>" <> fmt s <> "</td><td>" <> pack (show n) <> "</td></tr>"
+    stratSection stratFinal bhFinal avgWeight =
+      mconcat
+        [ "<h2>Signal strategy</h2>",
+          "<p class=\"subtitle\">The previous-day return is mapped to a <code>[0,1]</code> position size: the most negative bucket is 100% long, the most positive bucket is 0% long. Strategy return = weight × next-day return. This turns the 8.5 bps tail signal into an accumulated return curve versus buy-and-hold.</p>",
+          "<div class=\"row\"><div class=\"card\"><img src=\"signal_strategy.svg\" alt=\"Signal strategy\"></div></div>",
+          "<table><thead><tr><th>metric</th><th>value</th></tr></thead><tbody>",
+          "<tr><td>signal strategy final return</td><td>" <> fmt stratFinal <> "</td></tr>",
+          "<tr><td>buy &amp; hold final return</td><td>" <> fmt bhFinal <> "</td></tr>",
+          "<tr><td>average position size</td><td>" <> fmt avgWeight <> "</td></tr>",
+          "<tr><td>strategy scaled to 100% average exposure</td><td>" <> fmt (stratFinal / avgWeight) <> "</td></tr>",
+          "</tbody></table>"
+        ]
 
 refresh :: IO ()
 refresh = do
@@ -230,6 +243,23 @@ refresh = do
   writeChartOptions "other/sign_forecast.svg" signChart
   putStrLn "wrote other/sign_forecast.svg"
 
-  writeDashboard (modelStats returns) signResult
+  -- signal-based strategy: map the r_{t-1} bucket to a [0,1] weight and go long
+  let sigMealy = (,) <$> id <*> (delay1 0 >>> digitize 0.996 qs)
+      sigged = P.drop 1000 $ scan (second' sigMealy) r
+      weights = P.map (\(_, (_, b)) -> (5 - fromIntegral b :: Double) / 5) sigged
+      rets = P.map (fst . snd) sigged :: [Double]
+      stratRets = P.zipWith (*) weights rets
+      bhCum = scan (dipure (+)) rets :: [Double]
+      stratCum = scan (dipure (+)) stratRets :: [Double]
+      stratData = P.zip (P.map fst sigged) (P.zipWith (\s b -> [s, b]) stratCum bhCum)
+      stratChart = dayChart ["signal strategy", "buy & hold"] stratData
+      avgWeight = fold (ma 1) weights
+  writeChartOptions "other/signal_strategy.svg" stratChart
+  putStrLn "wrote other/signal_strategy.svg"
+  putStrLn $ "signal strategy final return: " <> show (P.last stratCum)
+  putStrLn $ "buy & hold final return:      " <> show (P.last bhCum)
+  putStrLn $ "average signal weight:        " <> show avgWeight
+
+  writeDashboard (modelStats returns) signResult (P.last stratCum, P.last bhCum, avgWeight)
 
   putStrLn "refresh complete"
