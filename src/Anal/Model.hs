@@ -4,23 +4,25 @@
 -- | Time-series models that view daily returns as regressions of Mealy statistics.
 --
 -- The focus is on forecasting a well-defined target: the /magnitude/ of today's
--- return, |r_t|.  Mealy statistics such as the online standard deviation are
--- natural predictors of magnitude, but the returns themselves are barely
--- predictable.
+-- return, |r_t|, and the /sign/ of today's return via quantile-bucketing of a
+-- lagged signal.
 --
 -- A GARCH(1,1) variance update is also a Mealy machine:
 --
 -- > h_t = omega + alpha * r_{t-1}^2 + beta * h_{t-1}
 module Anal.Model
   ( RegResult (..),
+    SignForecastResult (..),
     MagnitudeResult (..),
     magnitudeModel,
     garchMealy,
+    signForecast,
     modelStats,
     modelSummary,
   )
 where
 
+import Data.Map.Strict qualified as Map
 import Data.Mealy
 import Data.Mealy.Quantiles
 import Data.Text (Text, unpack)
@@ -57,6 +59,14 @@ data RegResult = RegResult
     resStd :: Double,
     resAutocorr :: Double,
     resSqAutocorr :: Double
+  }
+  deriving (Show)
+
+-- | Result of a quantile-bucketed sign forecast.
+data SignForecastResult = SignForecastResult
+  { sfName :: Text,
+    sfBuckets :: [(Int, Double, Double, Double)]
+    -- ^ (bucket label, mean next-day return, std of next-day returns, count)
   }
   deriving (Show)
 
@@ -139,6 +149,38 @@ garchMealy h0 omega alphaG betaG = M inject step extract
        in (h, sqrt h)
     extract = snd
 
+-- | Bucket a signal into quantiles and report the mean next-day return per
+-- bucket.  Bucketing avoids small-magnitude days swamping the signal: each
+-- bucket contains the same number of observations, and we read the sign off
+-- the extreme buckets.
+signForecast ::
+  -- | name for reporting
+  Text ->
+  -- | signal Mealy
+  Mealy Double Double ->
+  -- | quantile thresholds
+  [Double] ->
+  -- | return series
+  [Double] ->
+  SignForecastResult
+signForecast name sig qs rs =
+  let sigMealy = (,) <$> id <*> (sig >>> digitize 0.996 qs >>> delay1 0)
+      sigged = P.drop 1000 $ scan sigMealy rs
+      sumMapM = M (\(v, k) -> Map.singleton k v) (\m (v, k) -> Map.insertWith (+) k v m) id
+      sqSumMapM = M (\(v, k) -> Map.singleton k (v * v)) (\m (v, k) -> Map.insertWith (+) k (v * v) m) id
+      countMapM = M (\a -> Map.singleton a one) (\m a -> Map.insertWith (+) a one m) id
+      sums = fold sumMapM sigged
+      sqSums = fold sqSumMapM sigged
+      counts = fold countMapM (snd <$> sigged)
+      bucketStats k =
+        let n = counts Map.! k
+            s = sums Map.! k
+            ss = sqSums Map.! k
+            mean = s / n
+            var = ss / n - mean * mean
+         in (k, mean, sqrt var, n)
+   in SignForecastResult name (P.map (\(k, _) -> bucketStats k) (Map.toAscList sums))
+
 -- | Fit all the magnitude models and return their statistics.
 modelStats :: [Double] -> [RegResult]
 modelStats rs =
@@ -164,6 +206,13 @@ modelSummary :: [Double] -> IO ()
 modelSummary rs = do
   putStrLn "--- magnitude forecast: |r_t| ---"
   P.mapM_ printResult (modelStats rs)
+
+  putStrLn "--- sign forecast by quantile buckets ---"
+  let qs = [0.1, 0.4, 0.5, 0.6, 0.9] :: [Double]
+  printSignForecast (signForecast "median - mean" ((\a b -> a - b) <$> median 0.99 <*> ma 0.99) qs rs)
+  printSignForecast (signForecast "ma 0.01" (ma 0.01) qs rs)
+  printSignForecast (signForecast "r_{t-1}" (delay1 0) qs rs)
+
   putStrLn $ "observations: " <> show (P.length rs)
   where
     printResult r = do
@@ -178,3 +227,18 @@ modelSummary rs = do
       putStrLn $ "  mean=" <> show (resMean r) <> " std=" <> show (resStd r)
       putStrLn $ "  autocorr (lag 1):        " <> show (resAutocorr r)
       putStrLn $ "  squared autocorr (lag 1): " <> show (resSqAutocorr r)
+    printSignForecast sf = do
+      putStrLn $ unpack (sfName sf) <> ":"
+      P.mapM_
+        ( \(b, m, s, n) ->
+            putStrLn $
+              "  bucket "
+                <> show b
+                <> ": mean="
+                <> show m
+                <> " std="
+                <> show s
+                <> " n="
+                <> show n
+        )
+        (sfBuckets sf)

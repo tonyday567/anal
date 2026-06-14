@@ -41,8 +41,8 @@ row r =
       "</tr>"
     ]
 
-writeDashboard :: [RegResult] -> IO ()
-writeDashboard stats = do
+writeDashboard :: [RegResult] -> SignForecastResult -> IO ()
+writeDashboard stats signResult = do
   let bestR2 = P.maximum (P.map regR2 stats)
       html =
         mconcat
@@ -54,6 +54,7 @@ writeDashboard stats = do
             commentary bestR2,
             histSection,
             magSection,
+            signSection,
             "</body>\n</html>\n"
           ]
   writeFile "other/dashboard.html" (unpack html)
@@ -105,6 +106,17 @@ writeDashboard stats = do
         [ "<h2>Magnitude forecast (last 1000 days)</h2>",
           "<div class=\"row\"><div class=\"card\"><img src=\"mag.svg\" alt=\"Magnitude forecast\"></div></div>"
         ]
+    signSection =
+      mconcat
+        [ "<h2>Sign forecast by buckets</h2>",
+          "<p class=\"subtitle\">Signal: <code>" <> sfName signResult <> "</code>. Returns are split into quantile buckets; the bar shows the mean next-day return for each bucket. Extreme buckets isolate the tails, so a genuine sign signal would show low buckets negative and high buckets positive.</p>",
+          "<div class=\"row\"><div class=\"card\"><img src=\"sign_forecast.svg\" alt=\"Sign forecast\"></div></div>",
+          "<table><thead><tr><th>bucket</th><th>mean next-day return</th><th>std</th><th>count</th></tr></thead><tbody>",
+          mconcat (P.map signRow (sfBuckets signResult)),
+          "</tbody></table>"
+        ]
+    signRow (b, m, s, n) =
+      "<tr><td>" <> pack (show b) <> "</td><td>" <> fmt m <> "</td><td>" <> fmt s <> "</td><td>" <> pack (show n) <> "</td></tr>"
 
 refresh :: IO ()
 refresh = do
@@ -208,6 +220,16 @@ refresh = do
   writeChartOptions "other/stdresid_hist.svg" (histChart stdResRange 60 stdRes)
   putStrLn "wrote other/stdresid_hist.svg"
 
-  writeDashboard (modelStats returns)
+  -- sign forecast by quantile buckets (using previous-day return as signal)
+  let qs = [0.1, 0.4, 0.5, 0.6, 0.9] :: [Double]
+      signResult = signForecast "r_{t-1}" (delay1 0) qs returns
+      signBuckets = sfBuckets signResult
+      signLabels = P.map (\(b, _, _, _) -> pack (show b)) signBuckets
+      signMeans = P.map (\(_, m, _, _) -> m) signBuckets
+      signChart = barChart defaultBarOptions (BarData [signMeans] signLabels ["mean next-day return"])
+  writeChartOptions "other/sign_forecast.svg" signChart
+  putStrLn "wrote other/sign_forecast.svg"
+
+  writeDashboard (modelStats returns) signResult
 
   putStrLn "refresh complete"
