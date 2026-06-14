@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RebindableSyntax #-}
 
 -- | Time-series models that view daily returns as regressions of Mealy statistics.
@@ -11,15 +12,18 @@
 --
 -- > h_t = omega + alpha * r_{t-1}^2 + beta * h_{t-1}
 module Anal.Model
-  ( MagnitudeResult (..),
+  ( RegResult (..),
+    MagnitudeResult (..),
     magnitudeModel,
     garchMealy,
+    modelStats,
     modelSummary,
   )
 where
 
 import Data.Mealy
 import Data.Mealy.Quantiles
+import Data.Text (Text, unpack)
 import NumHask.Prelude hiding (fold)
 import qualified Prelude as P
 
@@ -42,6 +46,19 @@ rSquared :: (ExpField a) => [a] -> [a] -> a -> a -> a
 rSquared x y intercept slope =
   let yhat = P.map (\xi -> intercept + slope * xi) x
    in fold (corrGauss one) (regPairs y yhat) ** (one + one)
+
+-- | Result of a single simple regression, including residual diagnostics.
+data RegResult = RegResult
+  { regName :: Text,
+    regAlpha :: Double,
+    regBeta :: Double,
+    regR2 :: Double,
+    resMean :: Double,
+    resStd :: Double,
+    resAutocorr :: Double,
+    resSqAutocorr :: Double
+  }
+  deriving (Show)
 
 -- | Result of fitting a magnitude-forecasting model.
 data MagnitudeResult = MagnitudeResult
@@ -78,6 +95,27 @@ magnitudeModel rs =
           residuals = P.zipWith (-) absR predMag
         }
 
+-- | Fit a simple regression and collect residual diagnostics.
+fitSimple :: Text -> [Double] -> [Double] -> RegResult
+fitSimple name x y =
+  let (intercept, slope) = simpleReg one x y
+      yhat = P.map (\xi -> intercept + slope * xi) x
+      res = P.drop 1000 $ P.zipWith (-) y yhat
+      m = fold (ma one) res
+      s = fold (std one) res
+      ac1 = fold (corrGauss one) (regPairs res res)
+      ac1sq = fold (corrGauss one) (regPairs (P.map (** 2) res) (P.map (** 2) res))
+   in RegResult
+        { regName = name,
+          regAlpha = intercept,
+          regBeta = slope,
+          regR2 = rSquared x y intercept slope,
+          resMean = m,
+          resStd = s,
+          resAutocorr = ac1,
+          resSqAutocorr = ac1sq
+        }
+
 -- | A GARCH(1,1) variance Mealy: given a return, update the conditional
 -- variance and emit the conditional standard deviation for the next period.
 garchMealy ::
@@ -101,55 +139,42 @@ garchMealy h0 omega alphaG betaG = M inject step extract
        in (h, sqrt h)
     extract = snd
 
--- | Summary statistics for a residual series.
-residualSummary :: [Double] -> IO ()
-residualSummary res = do
-  let res' = P.drop 1000 res
-      m = fold (ma one) res'
-      s = fold (std one) res'
-      qs = [0.05, 0.25, 0.5, 0.75, 0.95]
-      qvals = fold (quantiles one qs) res'
-      ac1 = fold (corrGauss one) (regPairs res' res')
-      ac1sq = fold (corrGauss one) (regPairs (P.map (** 2) res') (P.map (** 2) res'))
-  putStrLn $ "  mean=" <> show m <> " std=" <> show s
-  putStrLn $ "  quantiles [0.05,0.25,0.5,0.75,0.95]: " <> show qvals
-  putStrLn $ "  autocorr (lag 1):        " <> show ac1
-  putStrLn $ "  squared autocorr (lag 1): " <> show ac1sq
-
--- | Fit and report magnitude-forecasting regressions and residual checks.
-modelSummary :: [Double] -> IO ()
-modelSummary rs = do
+-- | Fit all the magnitude models and return their statistics.
+modelStats :: [Double] -> [RegResult]
+modelStats rs =
   let absR = P.map abs rs
       s = scan (std 0.01) rs
       as = scan (ma 0.01) s
       sL = lag1 0 s
       asL = lag1 0 as
       absRL = lag1 0 absR
-
-  putStrLn "--- magnitude forecast: |r_t| ---"
-  let (a1, b1) = simpleReg one sL absR
-  putStrLn $ "|r_t| ~ std_{t-1}:        alpha=" <> show a1 <> " beta=" <> show b1 <> " R^2=" <> show (rSquared sL absR a1 b1)
-  residualSummary (P.zipWith (-) absR (P.map (\x -> a1 + b1 * x) sL))
-
-  let (a2, b2) = simpleReg one asL absR
-  putStrLn $ "|r_t| ~ avg_std_{t-1}:    alpha=" <> show a2 <> " beta=" <> show b2 <> " R^2=" <> show (rSquared asL absR a2 b2)
-  residualSummary (P.zipWith (-) absR (P.map (\x -> a2 + b2 * x) asL))
-
-  let (a3, b3) = simpleReg one absRL absR
-  putStrLn $ "|r_t| ~ |r_{t-1}|:        alpha=" <> show a3 <> " beta=" <> show b3 <> " R^2=" <> show (rSquared absRL absR a3 b3)
-  residualSummary (P.zipWith (-) absR (P.map (\x -> a3 + b3 * x) absRL))
-
-  putStrLn "--- GARCH(1,1) as Mealy ---"
-  let n = P.length rs
       h0 = fold (std one) (P.take 1000 rs) ** 2
-      -- Typical GARCH(1,1) parameters: alpha=0.1, beta=0.85, omega chosen for
-      -- a stationary variance equal to the in-sample variance.
       var = fold (std one) rs ** 2
       omega = var * (1 - 0.1 - 0.85)
       garchStd = scan (garchMealy h0 omega 0.1 0.85) rs
       garchStdL = lag1 0 garchStd
-      (a4, b4) = simpleReg one garchStdL absR
-  putStrLn $ "|r_t| ~ garch_std_{t-1}:  alpha=" <> show a4 <> " beta=" <> show b4 <> " R^2=" <> show (rSquared garchStdL absR a4 b4)
-  residualSummary (P.zipWith (-) absR (P.map (\x -> a4 + b4 * x) garchStdL))
+   in [ fitSimple "|r_t| ~ std_{t-1}" sL absR,
+        fitSimple "|r_t| ~ avg_std_{t-1}" asL absR,
+        fitSimple "|r_t| ~ |r_{t-1}|" absRL absR,
+        fitSimple "|r_t| ~ garch_std_{t-1}" garchStdL absR
+      ]
 
-  putStrLn $ "observations: " <> show n
+-- | Pretty-print the model statistics.
+modelSummary :: [Double] -> IO ()
+modelSummary rs = do
+  putStrLn "--- magnitude forecast: |r_t| ---"
+  P.mapM_ printResult (modelStats rs)
+  putStrLn $ "observations: " <> show (P.length rs)
+  where
+    printResult r = do
+      putStrLn $
+        unpack (regName r)
+          <> ": alpha="
+          <> show (regAlpha r)
+          <> " beta="
+          <> show (regBeta r)
+          <> " R^2="
+          <> show (regR2 r)
+      putStrLn $ "  mean=" <> show (resMean r) <> " std=" <> show (resStd r)
+      putStrLn $ "  autocorr (lag 1):        " <> show (resAutocorr r)
+      putStrLn $ "  squared autocorr (lag 1): " <> show (resSqAutocorr r)

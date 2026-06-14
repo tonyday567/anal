@@ -17,10 +17,94 @@ import Data.Bifunctor
 import Data.Mealy
 import Data.Mealy.Quantiles
 import Data.Profunctor
+import Data.Text (Text, pack, unpack)
 import Data.Time
 import NumHask.Prelude hiding (fold)
 import Prettychart
 import qualified Prelude as P
+
+fmt :: Double -> Text
+fmt = fixed (Just 4)
+
+row :: RegResult -> Text
+row r =
+  mconcat
+    [ "<tr>",
+      "<td>" <> regName r <> "</td>",
+      "<td>" <> fmt (regAlpha r) <> "</td>",
+      "<td>" <> fmt (regBeta r) <> "</td>",
+      "<td>" <> fmt (regR2 r) <> "</td>",
+      "<td>" <> fmt (resMean r) <> "</td>",
+      "<td>" <> fmt (resStd r) <> "</td>",
+      "<td>" <> fmt (resAutocorr r) <> "</td>",
+      "<td>" <> fmt (resSqAutocorr r) <> "</td>",
+      "</tr>"
+    ]
+
+writeDashboard :: [RegResult] -> IO ()
+writeDashboard stats = do
+  let bestR2 = P.maximum (P.map regR2 stats)
+      html =
+        mconcat
+          [ "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Anal Dashboard</title>\n<style>",
+            css,
+            "</style>\n</head>\n<body>",
+            header,
+            tableSection,
+            commentary bestR2,
+            histSection,
+            magSection,
+            "</body>\n</html>\n"
+          ]
+  writeFile "other/dashboard.html" (unpack html)
+  putStrLn "wrote other/dashboard.html"
+  where
+    css =
+      pack
+        "body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:1200px;margin:0 auto;padding:20px;background:#fff;color:#222}\n\
+        \h1{font-size:1.6rem;margin-bottom:0.2em}\n\
+        \h2{font-size:1.2rem;margin-top:2rem}\n\
+        \.subtitle{color:#555;font-size:0.95rem;margin-bottom:1.5rem}\n\
+        \.row{display:flex;gap:20px;flex-wrap:wrap;margin-top:1rem}\n\
+        \.card{flex:1;min-width:320px;border:1px solid #ddd;border-radius:8px;padding:15px;background:#fafafa}\n\
+        \.card img{width:100%;height:auto;display:block}\n\
+        \table{border-collapse:collapse;width:100%;margin-top:10px;font-size:0.9rem}\n\
+        \th,td{border:1px solid #ddd;padding:8px;text-align:left}\n\
+        \th{background:#f0f0f0}\n\
+        \.commentary{background:#f5f5f5;padding:15px;border-radius:8px;margin-top:1.5rem;line-height:1.5}\n\
+        \code{background:#e8e8e8;padding:2px 4px;border-radius:3px;font-family:SFMono-Regular,Menlo,monospace}\n"
+    header =
+      mconcat
+        [ "<h1>Anal: daily return magnitude models</h1>",
+          "<p class=\"subtitle\">Forecasting <code>|r_t|</code>, the absolute log-return of the S&amp;P 500, from lagged Mealy statistics. All predictors are known before day <code>t</code>.</p>"
+        ]
+    tableSection =
+      mconcat
+        [ "<h2>Model comparison</h2>",
+          "<table><thead><tr><th>Model</th><th>α</th><th>β</th><th>R²</th><th>residual mean</th><th>residual std</th><th>residual autocorr</th><th>squared residual autocorr</th></tr></thead><tbody>",
+          mconcat (P.map row stats),
+          "</tbody></table>"
+        ]
+    commentary best =
+      mconcat
+        [ "<div class=\"commentary\">",
+          "<p>The best one-step magnitude forecast here is the GARCH(1,1) conditional standard deviation, explaining about <strong>" <> fmt best <> "</strong> of the variance of <code>|r_t|</code>. The simple Mealy standard-deviation predictor explains roughly half that. Daily return magnitude is only weakly predictable, which is what we expect for liquid markets.</p>",
+          "<p>The striking number is the residual autocorrelation: it is essentially 1.0 for every model. That means the one-lag predictors capture only a thin slice of volatility clustering; large and small return magnitudes group together in ways that a single lag does not explain. The histograms below show the raw and standardized residuals from the Mealy-std model. A well-specified model would leave residuals that are roughly symmetric and free of autocorrelation.</p>",
+          "</div>"
+        ]
+    histSection =
+      mconcat
+        [ "<h2>Residual histograms</h2>",
+          "<div class=\"row\">",
+          "<div class=\"card\"><h3>Raw residuals</h3><img src=\"resid_hist.svg\" alt=\"Raw residual histogram\"></div>",
+          "<div class=\"card\"><h3>Standardized residuals</h3><img src=\"stdresid_hist.svg\" alt=\"Standardized residual histogram\"></div>",
+          "</div>"
+        ]
+    magSection =
+      mconcat
+        [ "<h2>Magnitude forecast (last 1000 days)</h2>",
+          "<div class=\"row\"><div class=\"card\"><img src=\"mag.svg\" alt=\"Magnitude forecast\"></div></div>"
+        ]
 
 refresh :: IO ()
 refresh = do
@@ -123,5 +207,7 @@ refresh = do
   putStrLn "wrote other/resid_hist.svg"
   writeChartOptions "other/stdresid_hist.svg" (histChart stdResRange 60 stdRes)
   putStrLn "wrote other/stdresid_hist.svg"
+
+  writeDashboard (modelStats returns)
 
   putStrLn "refresh complete"

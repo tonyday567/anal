@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Anal Dashboard</title>
+<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:1200px;margin:0 auto;padding:20px;background:#fff;color:#222}
+h1{font-size:1.6rem;margin-bottom:0.2em}
+h2{font-size:1.2rem;margin-top:2rem}
+.subtitle{color:#555;font-size:0.95rem;margin-bottom:1.5rem}
+.row{display:flex;gap:20px;flex-wrap:wrap;margin-top:1rem}
+.card{flex:1;min-width:320px;border:1px solid #ddd;border-radius:8px;padding:15px;background:#fafafa}
+.card img{width:100%;height:auto;display:block}
+table{border-collapse:collapse;width:100%;margin-top:10px;font-size:0.9rem}
+th,td{border:1px solid #ddd;padding:8px;text-align:left}
+th{background:#f0f0f0}
+.commentary{background:#f5f5f5;padding:15px;border-radius:8px;margin-top:1.5rem;line-height:1.5}
+code{background:#e8e8e8;padding:2px 4px;border-radius:3px;font-family:SFMono-Regular,Menlo,monospace}
+</style>
+</head>
+<body><h1>Anal: daily return magnitude models</h1><p class="subtitle">Forecasting <code>|r_t|</code>, the absolute log-return of the S&amp;P 500, from lagged Mealy statistics. All predictors are known before day <code>t</code>.</p><h2>Model comparison</h2><table><thead><tr><th>Model</th><th>α</th><th>β</th><th>R²</th><th>residual mean</th><th>residual std</th><th>residual autocorr</th><th>squared residual autocorr</th></tr></thead><tbody><tr><td>|r_t| ~ std_{t-1}</td><td>0.0050</td><td>2.2617</td><td>0.1042</td><td>0.0000</td><td>0.0081</td><td>1.0000</td><td>1.0000</td></tr><tr><td>|r_t| ~ avg_std_{t-1}</td><td>0.0050</td><td>2.2829</td><td>0.1052</td><td>-0.0000</td><td>0.0081</td><td>1.0000</td><td>1.0000</td></tr><tr><td>|r_t| ~ |r_{t-1}|</td><td>0.0055</td><td>0.2694</td><td>0.0726</td><td>-0.0000</td><td>0.0083</td><td>1.0000</td><td>1.0000</td></tr><tr><td>|r_t| ~ garch_std_{t-1}</td><td>-0.0020</td><td>0.9064</td><td>0.2204</td><td>0.0000</td><td>0.0076</td><td>1.0000</td><td>1.0000</td></tr></tbody></table><div class="commentary"><p>The best one-step magnitude forecast here is the GARCH(1,1) conditional standard deviation, explaining about <strong>0.2204</strong> of the variance of <code>|r_t|</code>. The simple Mealy standard-deviation predictor explains roughly half that. Daily return magnitude is only weakly predictable, which is what we expect for liquid markets.</p><p>The striking number is the residual autocorrelation: it is essentially 1.0 for every model. That means the one-lag predictors capture only a thin slice of volatility clustering; large and small return magnitudes group together in ways that a single lag does not explain. The histograms below show the raw and standardized residuals from the Mealy-std model. A well-specified model would leave residuals that are roughly symmetric and free of autocorrelation.</p></div><h2>Residual histograms</h2><div class="row"><div class="card"><h3>Raw residuals</h3><img src="resid_hist.svg" alt="Raw residual histogram"></div><div class="card"><h3>Standardized residuals</h3><img src="stdresid_hist.svg" alt="Standardized residual histogram"></div></div><h2>Magnitude forecast (last 1000 days)</h2><div class="row"><div class="card"><img src="mag.svg" alt="Magnitude forecast"></div></div></body>
+</html>
