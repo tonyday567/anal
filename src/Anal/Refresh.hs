@@ -106,11 +106,11 @@ refresh = do
 
   modelSummary returns
 
-  -- volatility model chart (last 1000 days)
-  let vm = volatilityModel returns
-      volData = P.drop (P.length r - 1000) $ P.zip (fst <$> r) (P.zipWith (\s p -> [s, p]) (stdSeries vm) (predStd vm))
-      volChart = dayChart ["std", "predicted std"] volData
-  writeChartOptions "other/vol.svg" volChart
-  putStrLn "wrote other/vol.svg"
+  -- magnitude forecast chart (last 1000 days): actual |r_t| vs predicted |r_t|
+  let mm = magnitudeModel returns
+      magData = P.drop (P.length r - 1000) $ P.zip (fst <$> r) (P.zipWith (\a p -> [a, p]) (absReturns mm) (predMagnitude mm))
+      magChart = dayChart ["|r_t|", "predicted |r_t|"] magData
+  writeChartOptions "other/mag.svg" magChart
+  putStrLn "wrote other/mag.svg"
 
   putStrLn "refresh complete"

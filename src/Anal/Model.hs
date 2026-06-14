@@ -1,14 +1,20 @@
 {-# LANGUAGE RebindableSyntax #-}
 
 -- | Time-series models that view daily returns as regressions of Mealy statistics.
+--
+-- The focus is on forecasting a well-defined target: the /magnitude/ of today's
+-- return, |r_t|.  Mealy statistics such as the online standard deviation are
+-- natural predictors of magnitude, but the returns themselves are barely
+-- predictable.
 module Anal.Model
-  ( ModelResult (..),
+  ( MagnitudeResult (..),
+    magnitudeModel,
     modelSummary,
-    volatilityModel,
   )
 where
 
 import Data.Mealy
+import Data.Mealy.Quantiles
 import NumHask.Prelude hiding (fold)
 import qualified Prelude as P
 
@@ -32,54 +38,74 @@ rSquared x y intercept slope =
   let yhat = P.map (\xi -> intercept + slope * xi) x
    in fold (corrGauss one) (regPairs y yhat) ** (one + one)
 
--- | Result of fitting an AR(1)-style volatility model.
-data ModelResult = ModelResult
-  { stdSeries :: [Double],
+-- | Result of fitting a magnitude-forecasting model.
+data MagnitudeResult = MagnitudeResult
+  { absReturns :: [Double],
+    stdSeries :: [Double],
     avgStdSeries :: [Double],
-    volAlpha :: Double,
-    volBeta :: Double,
-    predStd :: [Double]
+    magAlpha :: Double,
+    magBeta :: Double,
+    predMagnitude :: [Double]
   }
   deriving (Show)
 
--- | Fit an AR(1) model to the slow-moving Mealy standard deviation:
---   std_t = alpha + beta * std_{t-1} + eps.
-volatilityModel :: [Double] -> ModelResult
-volatilityModel rs =
-  let s = scan (std 0.99) rs
-      as = scan (ma 0.99) s
+-- | Forecast |r_t| from yesterday's Mealy standard deviation.
+--
+-- Uses the same fast-decay (0.01) Mealys that 'Anal.Refresh' reports, so the
+-- predictor is genuinely out-of-sample: std_{t-1} only knows returns up to
+-- day t-1.
+magnitudeModel :: [Double] -> MagnitudeResult
+magnitudeModel rs =
+  let absR = P.map abs rs
+      s = scan (std 0.01) rs
+      as = scan (ma 0.01) s
       sL = lag1 0 s
-      (intercept, slope) = simpleReg one sL s
-   in ModelResult
-        { stdSeries = s,
+      (intercept, slope) = simpleReg one sL absR
+   in MagnitudeResult
+        { absReturns = absR,
+          stdSeries = s,
           avgStdSeries = as,
-          volAlpha = intercept,
-          volBeta = slope,
-          predStd = P.map (\x -> intercept + slope * x) sL
+          magAlpha = intercept,
+          magBeta = slope,
+          predMagnitude = P.map (\x -> intercept + slope * x) sL
         }
 
--- | Fit and report a small family of Mealy-statistic regressions.
+-- | Summary statistics for a residual series.
+residualSummary :: [Double] -> IO ()
+residualSummary res = do
+  let res' = P.drop 1000 res
+      m = fold (ma one) res'
+      s = fold (std one) res'
+      qs = [0.05, 0.25, 0.5, 0.75, 0.95]
+      qvals = fold (quantiles one qs) res'
+      ac1 = fold (corrGauss one) (regPairs res' res')
+      ac1sq = fold (corrGauss one) (regPairs (P.map (** 2) res') (P.map (** 2) res'))
+  putStrLn $ "  mean=" <> show m <> " std=" <> show s
+  putStrLn $ "  quantiles [0.05,0.25,0.5,0.75,0.95]: " <> show qvals
+  putStrLn $ "  autocorr (lag 1):        " <> show ac1
+  putStrLn $ "  squared autocorr (lag 1): " <> show ac1sq
+
+-- | Fit and report magnitude-forecasting regressions and residual checks.
 modelSummary :: [Double] -> IO ()
 modelSummary rs = do
-  let vm = volatilityModel rs
-      s = stdSeries vm
-      as = avgStdSeries vm
+  let absR = P.map abs rs
+      s = scan (std 0.01) rs
+      as = scan (ma 0.01) s
       sL = lag1 0 s
       asL = lag1 0 as
-      rL = lag1 0 rs
+      absRL = lag1 0 absR
 
-  putStrLn "--- volatility persistence ---"
-  let (a1, b1) = simpleReg one sL s
-  putStrLn $ "std_t ~ std_{t-1}:      alpha=" <> show a1 <> " beta=" <> show b1 <> " R^2=" <> show (rSquared sL s a1 b1)
-  let (a2, b2) = simpleReg one asL s
-  putStrLn $ "std_t ~ avg_std_{t-1}:  alpha=" <> show a2 <> " beta=" <> show b2 <> " R^2=" <> show (rSquared asL s a2 b2)
+  putStrLn "--- magnitude forecast: |r_t| ---"
+  let (a1, b1) = simpleReg one sL absR
+  putStrLn $ "|r_t| ~ std_{t-1}:        alpha=" <> show a1 <> " beta=" <> show b1 <> " R^2=" <> show (rSquared sL absR a1 b1)
+  residualSummary (P.zipWith (-) absR (P.map (\x -> a1 + b1 * x) sL))
 
-  putStrLn "--- return prediction (simple) ---"
-  let (a3, b3) = simpleReg one sL rs
-  putStrLn $ "r_t ~ std_{t-1}:        alpha=" <> show a3 <> " beta=" <> show b3 <> " R^2=" <> show (rSquared sL rs a3 b3)
-  let (a4, b4) = simpleReg one asL rs
-  putStrLn $ "r_t ~ avg_std_{t-1}:    alpha=" <> show a4 <> " beta=" <> show b4 <> " R^2=" <> show (rSquared asL rs a4 b4)
-  let (a5, b5) = simpleReg one rL rs
-  putStrLn $ "r_t ~ r_{t-1}:          alpha=" <> show a5 <> " beta=" <> show b5 <> " R^2=" <> show (rSquared rL rs a5 b5)
+  let (a2, b2) = simpleReg one asL absR
+  putStrLn $ "|r_t| ~ avg_std_{t-1}:    alpha=" <> show a2 <> " beta=" <> show b2 <> " R^2=" <> show (rSquared asL absR a2 b2)
+  residualSummary (P.zipWith (-) absR (P.map (\x -> a2 + b2 * x) asL))
+
+  let (a3, b3) = simpleReg one absRL absR
+  putStrLn $ "|r_t| ~ |r_{t-1}|:        alpha=" <> show a3 <> " beta=" <> show b3 <> " R^2=" <> show (rSquared absRL absR a3 b3)
+  residualSummary (P.zipWith (-) absR (P.map (\x -> a3 + b3 * x) absRL))
 
   putStrLn $ "observations: " <> show (P.length rs)
