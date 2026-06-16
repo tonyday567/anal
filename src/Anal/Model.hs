@@ -14,16 +14,31 @@ module Anal.Model
   ( RegResult (..),
     SignForecastResult (..),
     SimResult (..),
+    MemoryReport (..),
     MagnitudeResult (..),
+    MultiRegResult (..),
+    InfoResult (..),
     magnitudeModel,
     garchMealy,
+    maDiffMealy,
+    fitMulti,
     signForecast,
     modelStats,
     modelSummary,
+    memoryReport,
     simulateStrategy,
+    horizonMagnitudeModel,
+    infoCoefficient,
+    infoReport,
+    bucketWeightGradient,
+    thresholdSensitivity,
+    digitizeDecaySensitivity,
+    stdDecaySensitivity,
+    strategyFinalFromSign,
   )
 where
 
+import Data.List (foldl', transpose)
 import Data.Map.Strict qualified as Map
 import Data.Mealy
 import Data.Mealy.Quantiles
@@ -35,6 +50,25 @@ import qualified Prelude as P
 -- | Lag a series by one observation, filling the first slot with a default.
 lag1 :: a -> [a] -> [a]
 lag1 x0 xs = x0 : P.init xs
+
+-- | Lag a series by k observations.
+lagk :: Int -> a -> [a] -> [a]
+lagk k x0 xs = P.replicate k x0 ++ P.take (P.length xs - k) xs
+
+-- | Autocorrelation at lag k using the classical correlation estimator.
+acf :: Int -> [Double] -> Double
+acf k xs = fold (corrGauss 1) (P.drop k $ P.zip xs (lagk k 0 xs))
+
+-- | Dickey-Fuller-style regression: regress the first difference on the
+-- lagged level.  A beta significantly less than zero rejects a unit root.
+dickeyFuller :: [Double] -> (Double, Double, Double)
+dickeyFuller xs =
+  let xsL = lag1 0 xs
+      dxs = P.zipWith (-) xs xsL
+      xs' = P.drop 1000 xsL
+      dxs' = P.drop 1000 dxs
+      (intercept, slope) = simpleReg one xs' dxs'
+   in (intercept, slope, rSquared xs' dxs' intercept slope)
 
 -- | Pair two series and drop the first observations to avoid the spurious
 -- initial lagged value.
@@ -87,6 +121,43 @@ data SimResult = SimResult
   }
   deriving (Show)
 
+-- | Result of a multiple regression with named features.
+data MultiRegResult = MultiRegResult
+  { multiName :: Text,
+    multiAlpha :: Double,
+    multiBetaNames :: [Text],
+    multiBetas :: [Double],
+    multiR2 :: Double,
+    multiResMean :: Double,
+    multiResStd :: Double,
+    multiResAutocorr :: Double,
+    multiResSqAutocorr :: Double
+  }
+  deriving (Show)
+
+-- | Information-theoretic dependence between two digitised time series.
+data InfoResult = InfoResult
+  { infoName :: Text,
+    infoHX :: Double,
+    infoHY :: Double,
+    infoHXY :: Double,
+    infoMI :: Double,
+    infoNMI :: Double
+  }
+  deriving (Show)
+
+-- | Stationarity / memory summary.
+data MemoryReport = MemoryReport
+  { acfReturns :: [(Int, Double)],
+    acfAbs :: [(Int, Double)],
+    acfStd :: [(Int, Double)],
+    dickeyFullerBeta :: Double,
+    dickeyFullerR2 :: Double,
+    r2OneDay :: Double,
+    r2TwoDay :: Double
+  }
+  deriving (Show)
+
 -- | Result of fitting a magnitude-forecasting model.
 data MagnitudeResult = MagnitudeResult
   { absReturns :: [Double],
@@ -122,6 +193,12 @@ magnitudeModel rs =
           residuals = P.zipWith (-) absR predMag
         }
 
+-- | A "difference from moving average" kernel: current value minus its
+-- exponential moving average with decay @r@.  Positive values mean the series
+-- is above its recent trend; negative values mean it is below.
+maDiffMealy :: Double -> Mealy Double Double
+maDiffMealy r = (\x m -> x - m) <$> id <*> ma r
+
 -- | Fit a simple regression and collect residual diagnostics.
 fitSimple :: Text -> [Double] -> [Double] -> RegResult
 fitSimple name x y =
@@ -130,8 +207,8 @@ fitSimple name x y =
       res = P.drop 1000 $ P.zipWith (-) y yhat
       m = fold (ma one) res
       s = fold (std one) res
-      ac1 = fold (corrGauss one) (regPairs res res)
-      ac1sq = fold (corrGauss one) (regPairs (P.map (** 2) res) (P.map (** 2) res))
+      ac1 = acf 1 res
+      ac1sq = acf 1 (P.map (** 2) res)
    in RegResult
         { regName = name,
           regAlpha = intercept,
@@ -141,6 +218,90 @@ fitSimple name x y =
           resStd = s,
           resAutocorr = ac1,
           resSqAutocorr = ac1sq
+        }
+
+-- | Solve a square linear system @A x = b@ by Gaussian elimination with partial
+-- pivoting.  The input matrix is represented as a list of rows.
+solveLinear :: [[Double]] -> [Double] -> [Double]
+solveLinear a0 b0 =
+  let n = P.length a0
+      aug = [row ++ [b0 P.!! i] | (i, row) <- zip [0 ..] a0]
+      swap i j m
+        | i == j = m
+        | otherwise =
+            let (pre, rest) = P.splitAt i m
+                (mid, post) = P.splitAt (j - i) rest
+             in pre ++ [P.head post] ++ P.tail mid ++ [P.head mid] ++ P.tail post
+      forward m k
+        | k == n = m
+        | otherwise =
+            let col = [m P.!! i P.!! k | i <- [k .. n - 1]]
+                pivotVal = P.maximum (P.map P.abs col)
+                pivotRow = k + P.length (P.takeWhile (\x -> P.abs x /= pivotVal) col)
+                m1 = swap k pivotRow m
+                piv = m1 P.!! k P.!! k
+                eliminate i row
+                  | i == k = row
+                  | otherwise =
+                      let factor = row P.!! k / piv
+                       in P.zipWith (-) row (P.map (* factor) (m1 P.!! k))
+                m2 = [eliminate i (m1 P.!! i) | i <- [0 .. n - 1]]
+             in forward m2 (k + 1)
+      back m =
+        let loop i sol
+              | i < 0 = sol
+              | otherwise =
+                  let row = m P.!! i
+                      sumKnown = P.sum [row P.!! j * sol P.!! j | j <- [i + 1 .. n - 1]]
+                      xi = (row P.!! n - sumKnown) / row P.!! i
+                   in loop (i - 1) (P.take i sol ++ [xi] ++ P.drop (i + 1) sol)
+         in loop (n - 1) (P.replicate n 0)
+   in back (forward aug 0)
+
+-- | Ridge-regression solution @beta = (X'X + lambda I)^{-1} X'y@.  The rows of
+-- @xs@ are observations; a small ridge term stabilises ill-conditioned feature
+-- matrices such as overlapping moving-average kernels.
+ridgeSolve :: Double -> [[Double]] -> [Double] -> [Double]
+ridgeSolve lambda xs y =
+  let p = P.length (P.head xs)
+      a =
+        [ [ P.sum [xrow P.!! i * xrow P.!! j | xrow <- xs]
+              + (if i == j then lambda else 0)
+            | j <- [0 .. p - 1]
+          ]
+          | i <- [0 .. p - 1]
+        ]
+      b = [P.sum [xrow P.!! i * yi | (xrow, yi) <- P.zip xs y] | i <- [0 .. p - 1]]
+   in solveLinear a b
+
+-- | Fit a multiple regression with an intercept and named features.
+fitMulti ::
+  Text ->
+  [Text] ->
+  [[Double]] ->
+  [Double] ->
+  MultiRegResult
+fitMulti name names xs y =
+  let fs0 = transpose xs
+      fs = P.map (1 :) fs0
+      pairs = P.drop 1000 $ P.zip fs y
+      coeffs = ridgeSolve 1e-6 (P.map fst pairs) (P.map snd pairs)
+      alpha = P.head coeffs
+      betaList = P.tail coeffs
+      yhat = P.map (\xrow -> P.sum (P.zipWith (*) coeffs xrow)) fs
+      res = P.drop 1000 $ P.zipWith (-) y yhat
+      m = fold (ma one) res
+      s = fold (std one) res
+   in MultiRegResult
+        { multiName = name,
+          multiAlpha = alpha,
+          multiBetaNames = names,
+          multiBetas = betaList,
+          multiR2 = fold (corrGauss one) (regPairs y yhat) ** (one + one),
+          multiResMean = m,
+          multiResStd = s,
+          multiResAutocorr = acf 1 res,
+          multiResSqAutocorr = acf 1 (P.map (** 2) res)
         }
 
 -- | A GARCH(1,1) variance Mealy: given a return, update the conditional
@@ -180,8 +341,19 @@ signForecast ::
   -- | return series
   [Double] ->
   SignForecastResult
-signForecast name sig qs rs =
-  let sigMealy = (,) <$> id <*> (sig >>> digitize 0.996 qs >>> delay1 0)
+signForecast = signForecastR 0.996
+
+-- | Generalised 'signForecast' with an explicit decay parameter for the
+-- online quantile estimation.
+signForecastR ::
+  Double ->
+  Text ->
+  Mealy Double Double ->
+  [Double] ->
+  [Double] ->
+  SignForecastResult
+signForecastR r name sig qs rs =
+  let sigMealy = (,) <$> id <*> (sig >>> digitize r qs >>> delay1 0)
       sigged = P.drop 1000 $ scan sigMealy rs
       sumMapM = M (\(v, k) -> Map.singleton k v) (\m (v, k) -> Map.insertWith (+) k v m) id
       sqSumMapM = M (\(v, k) -> Map.singleton k (v * v)) (\m (v, k) -> Map.insertWith (+) k (v * v) m) id
@@ -192,7 +364,7 @@ signForecast name sig qs rs =
       counts = fold countMapM (snd <$> sigged)
       returnsMap = fold returnsMapM sigged
       signalSeries = P.drop 1000 $ scan sig rs
-      thresholds = fold (quantiles 0.996 qs) signalSeries
+      thresholds = fold (quantiles r qs) signalSeries
       bucketStats k =
         let n = counts Map.! k
             s = sums Map.! k
@@ -210,6 +382,58 @@ signForecast name sig qs rs =
 -- | Determine the quantile bucket of a signal value given estimated thresholds.
 toBucket :: [Double] -> Double -> Int
 toBucket thresholds x = P.length (P.takeWhile (<= x) thresholds)
+
+-- | Mealy that assigns a value to a bucket given fixed thresholds.
+bucketMealy :: [Double] -> Mealy Double Int
+bucketMealy thresholds = M (const 0) (\_ r -> toBucket thresholds r) id
+
+-- | Final accumulated return of the bucket-weight strategy for a given
+-- 'SignForecastResult' and set of bucket weights.
+strategyFinalFromSign :: SignForecastResult -> [Double] -> [Double] -> Double
+strategyFinalFromSign sf weights rs =
+  let thresholds = sfThresholds sf
+      sigged = P.drop 1000 $ scan ((,) <$> id <*> (delay1 0 >>> bucketMealy thresholds)) rs
+   in P.sum [weights P.!! b * r_t | (r_t, b) <- sigged]
+
+-- | Gradient of the bucket-weight strategy final return with respect to each
+-- bucket weight.  Because the final return is linear in the weights, the
+-- gradient is just the sum of returns observed in each bucket.
+bucketWeightGradient :: SignForecastResult -> [Double]
+bucketWeightGradient sf =
+  [P.sum (Map.findWithDefault [] b (sfBucketReturns sf)) | b <- [0 .. 5]]
+
+-- | Finite-difference sensitivity of the strategy final return to each
+-- quantile threshold.  Returns (base threshold, derivative wrt that threshold).
+thresholdSensitivity :: [Double] -> [Double] -> [Double] -> Double -> [(Double, Double)]
+thresholdSensitivity rs qs weights eps =
+  let base = strategyFinalFromSign (signForecast "r_{t-1}" (delay1 0) qs rs) weights rs
+      n = P.length qs
+      sens i =
+        let qs' = P.take i qs ++ [qs P.!! i + eps] ++ P.drop (i + 1) qs
+            final = strategyFinalFromSign (signForecast "r_{t-1}" (delay1 0) qs' rs) weights rs
+         in (qs P.!! i, (final - base) / eps)
+   in P.map sens [0 .. n - 1]
+
+-- | Finite-difference sensitivity of the strategy final return to the online
+-- quantile-estimation decay rate @r@ used by 'digitize'.
+digitizeDecaySensitivity :: [Double] -> [Double] -> [Double] -> Double -> [(Double, Double)]
+digitizeDecaySensitivity rs qs weights eps =
+  let run r = strategyFinalFromSign (signForecastR r "r_{t-1}" (delay1 0) qs rs) weights rs
+      rs' = [0.995, 0.996, 0.997]
+   in P.map (\r -> (r, (run (r + eps) - run r) / eps)) rs'
+
+-- | R^2 of the simple magnitude model |r_t| ~ std_{t-1} for a range of decay
+-- rates, useful for visualising the gradient of model fit around the current
+-- rate.
+stdDecaySensitivity :: [Double] -> [(Double, Double)]
+stdDecaySensitivity rs =
+  let absR = P.map abs rs
+      run r =
+        let sL = lag1 0 $ scan (std r) rs
+            (a, b) = simpleReg one sL absR
+         in rSquared sL absR a b
+      rs' = [0.001, 0.005, 0.01, 0.02, 0.05]
+   in P.map (\r -> (r, run r)) rs'
 
 -- | Simulate many paths from the bucket residual model and apply a set of
 -- bucket weights.  Returns are bootstrapped within each bucket, preserving
@@ -258,6 +482,86 @@ simulateStrategy sf weights nPaths len = do
       result = SimResult stratFinals bhFinals meanS stdS meanB stdB beat
   pure result
 
+-- | Compute stationarity, memory, and forecast-decay statistics.
+memoryReport :: [Double] -> MemoryReport
+memoryReport rs =
+  let absR = P.map abs rs
+      s = scan (std 0.01) rs
+      lags = [1, 2, 3, 5, 10, 20]
+      (_, dfBeta, dfR2) = dickeyFuller absR
+      sL1 = lag1 0 s
+      sL2 = lagk 2 0 s
+      (a1, b1) = simpleReg one sL1 absR
+      (a2, b2) = simpleReg one sL2 absR
+   in MemoryReport
+        { acfReturns = P.map (\k -> (k, acf k rs)) lags,
+          acfAbs = P.map (\k -> (k, acf k absR)) lags,
+          acfStd = P.map (\k -> (k, acf k s)) lags,
+          dickeyFullerBeta = dfBeta,
+          dickeyFullerR2 = dfR2,
+          r2OneDay = rSquared sL1 absR a1 b1,
+          r2TwoDay = rSquared sL2 absR a2 b2
+        }
+
+-- | Digitise a series into three buckets using the [1/3, 2/3] quantiles.
+digit3 :: [Double] -> [Int]
+digit3 xs =
+  let thresholds = fold (quantiles 0.996 [one / 3, (one + one) / 3]) xs
+   in P.map (toBucket thresholds) xs
+
+-- | Shannon entropy from a probability distribution (base 2).
+entropy :: [Double] -> Double
+entropy ps = - P.sum [p * P.logBase 2 p | p <- ps, p > 0]
+
+-- | Normalised mutual information between two signals, computed on 3-digit
+-- discretisations.  NMI = I(X;Y) / min(H(X),H(Y)) is 0 for independence and
+-- 1 for a deterministic relationship.
+infoCoefficient ::
+  Text ->
+  Mealy Double Double ->
+  Mealy Double Double ->
+  [Double] ->
+  InfoResult
+infoCoefficient name sigX sigY rs =
+  let xs = P.drop 1000 $ scan sigX rs
+      ys = P.drop 1000 $ scan sigY rs
+      pairs = P.zip (digit3 xs) (digit3 ys)
+      counts = foldl' (\m (x, y) -> Map.insertWith (+) (x, y) (1 :: Int) m) Map.empty pairs
+      n = fromIntegral (P.length pairs) :: Double
+      joint = Map.map ((/ n) . fromIntegral) counts
+      marginalX = Map.fromListWith (+) [(x, p) | ((x, _), p) <- Map.toList joint]
+      marginalY = Map.fromListWith (+) [(y, p) | ((_, y), p) <- Map.toList joint]
+      hx = entropy (Map.elems marginalX)
+      hy = entropy (Map.elems marginalY)
+      hxy = entropy (Map.elems joint)
+      mi = hx + hy - hxy
+   in InfoResult
+        { infoName = name,
+          infoHX = hx,
+          infoHY = hy,
+          infoHXY = hxy,
+          infoMI = mi,
+          infoNMI = mi / P.min hx hy
+        }
+
+-- | Information coefficients for a few interesting signal pairs.
+infoReport :: [Double] -> [InfoResult]
+infoReport rs =
+  let absM = abs <$> id
+      s = std 0.01
+      as = s >>> ma 0.01
+      h0 = fold (std one) (P.take 1000 rs) ** 2
+      var = fold (std one) rs ** 2
+      omega = var * (1 - 0.1 - 0.85)
+      g = garchMealy h0 omega 0.1 0.85
+   in [ infoCoefficient "r_t vs r_{t-1}" id (delay1 0) rs,
+        infoCoefficient "|r_t| vs |r_{t-1}|" absM (abs <$> delay1 0) rs,
+        infoCoefficient "r_t vs std_{t-1}" id (s >>> delay1 0) rs,
+        infoCoefficient "|r_t| vs std_{t-1}" absM (s >>> delay1 0) rs,
+        infoCoefficient "|r_t| vs avg_std_{t-1}" absM (as >>> delay1 0) rs,
+        infoCoefficient "|r_t| vs garch_std_{t-1}" absM (g >>> delay1 0) rs
+      ]
+
 -- | Fit all the magnitude models and return their statistics.
 modelStats :: [Double] -> [RegResult]
 modelStats rs =
@@ -278,20 +582,76 @@ modelStats rs =
         fitSimple "|r_t| ~ garch_std_{t-1}" garchStdL absR
       ]
 
+-- | Multi-feature magnitude model: a baseline lagged absolute return plus
+-- moving-average-difference kernels at weekly, monthly and yearly horizons.
+horizonMagnitudeModel :: [Double] -> MultiRegResult
+horizonMagnitudeModel rs =
+  let absR = P.map abs rs
+      absRL = lag1 0 absR
+      weekly = lag1 0 $ scan (maDiffMealy 0.8) absR
+      monthly = lag1 0 $ scan (maDiffMealy 0.95) absR
+      yearly = lag1 0 $ scan (maDiffMealy 0.996) absR
+   in fitMulti
+        "|r_t| ~ x0*|r_{t-1}| + weekly + monthly + yearly"
+        ["|r_{t-1}|", "weekly", "monthly", "yearly"]
+        [absRL, weekly, monthly, yearly]
+        absR
+
 -- | Pretty-print the model statistics.
 modelSummary :: [Double] -> IO ()
 modelSummary rs = do
   putStrLn "--- magnitude forecast: |r_t| ---"
   P.mapM_ printResult (modelStats rs)
 
+  putStrLn "--- multi-feature magnitude model ---"
+  let multi = horizonMagnitudeModel rs
+  putStrLn $ unpack (multiName multi) <> ": alpha=" <> show (multiAlpha multi) <> " R^2=" <> show (multiR2 multi)
+  P.mapM_
+    ( \(n, b) ->
+        putStrLn $ "  " <> unpack n <> " beta=" <> show b
+    )
+    (P.zip (multiBetaNames multi) (multiBetas multi))
+  putStrLn $ "  mean=" <> show (multiResMean multi) <> " std=" <> show (multiResStd multi)
+  putStrLn $ "  autocorr (lag 1):        " <> show (multiResAutocorr multi)
+  putStrLn $ "  squared autocorr (lag 1): " <> show (multiResSqAutocorr multi)
+
   putStrLn "--- sign forecast by quantile buckets ---"
   let qs = [0.1, 0.4, 0.5, 0.6, 0.9] :: [Double]
   printSignForecast (signForecast "median - mean" ((\a b -> a - b) <$> median 0.99 <*> ma 0.99) qs rs)
   printSignForecast (signForecast "ma 0.01" (ma 0.01) qs rs)
   printSignForecast (signForecast "r_{t-1}" (delay1 0) qs rs)
+  printSignForecast (signForecast "r_{t-2}" (delay1 0 >>> delay1 0) qs rs)
+
+  putStrLn "--- stationarity / memory ---"
+  let absR = P.map abs rs
+      s = scan (std 0.01) rs
+  putStrLn "autocorrelations of returns:"
+  P.mapM_ (\k -> putStrLn $ "  lag " <> show k <> ": " <> show (acf k rs)) [1, 2, 3, 5, 10, 20]
+  putStrLn "autocorrelations of |r|:"
+  P.mapM_ (\k -> putStrLn $ "  lag " <> show k <> ": " <> show (acf k absR)) [1, 2, 3, 5, 10, 20]
+  putStrLn "autocorrelations of std 0.01:"
+  P.mapM_ (\k -> putStrLn $ "  lag " <> show k <> ": " <> show (acf k s)) [1, 2, 3, 5, 10, 20]
+  let (aDF, bDF, r2DF) = dickeyFuller absR
+  putStrLn $ "Dickey-Fuller on |r|: alpha=" <> show aDF <> " beta=" <> show bDF <> " R^2=" <> show r2DF
+
+  putStrLn "--- two-day decay ---"
+  let sL2 = lagk 2 0 s
+      (a2, b2) = simpleReg one sL2 absR
+  putStrLn $ "|r_t| ~ std_{t-2}: alpha=" <> show a2 <> " beta=" <> show b2 <> " R^2=" <> show (rSquared sL2 absR a2 b2)
+
+  putStrLn "--- information coefficients (3-digit NMI) ---"
+  P.mapM_ printInfo (infoReport rs)
 
   putStrLn $ "observations: " <> show (P.length rs)
   where
+    printInfo i =
+      putStrLn $
+        unpack (infoName i)
+          <> ": H(X)=" <> show (infoHX i)
+          <> " H(Y)=" <> show (infoHY i)
+          <> " H(X,Y)=" <> show (infoHXY i)
+          <> " MI=" <> show (infoMI i)
+          <> " NMI=" <> show (infoNMI i)
     printResult r = do
       putStrLn $
         unpack (regName r)
