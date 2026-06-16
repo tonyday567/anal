@@ -45,7 +45,7 @@ import Data.Mealy.Quantiles
 import Data.Text (Text, unpack)
 import NumHask.Prelude hiding (fold)
 import System.Random
-import qualified Prelude as P
+import Prelude qualified as P
 
 -- | Lag a series by one observation, filling the first slot with a default.
 lag1 :: a -> [a] -> [a]
@@ -103,8 +103,8 @@ data RegResult = RegResult
 data SignForecastResult = SignForecastResult
   { sfName :: Text,
     sfThresholds :: [Double],
+    -- | (bucket label, mean next-day return, std of next-day returns, count)
     sfBuckets :: [(Int, Double, Double, Double)],
-    -- ^ (bucket label, mean next-day return, std of next-day returns, count)
     sfBucketReturns :: Map.Map Int [Double]
   }
   deriving (Show)
@@ -267,9 +267,9 @@ ridgeSolve lambda xs y =
       a =
         [ [ P.sum [xrow P.!! i * xrow P.!! j | xrow <- xs]
               + (if i == j then lambda else 0)
-            | j <- [0 .. p - 1]
+          | j <- [0 .. p - 1]
           ]
-          | i <- [0 .. p - 1]
+        | i <- [0 .. p - 1]
         ]
       b = [P.sum [xrow P.!! i * yi | (xrow, yi) <- P.zip xs y] | i <- [0 .. p - 1]]
    in solveLinear a b
@@ -316,7 +316,6 @@ garchMealy ::
   -- | beta
   Double ->
   Mealy Double Double
-
 garchMealy h0 omega alphaG betaG = M inject step extract
   where
     inject r =
@@ -511,7 +510,7 @@ digit3 xs =
 
 -- | Shannon entropy from a probability distribution (base 2).
 entropy :: [Double] -> Double
-entropy ps = - P.sum [p * P.logBase 2 p | p <- ps, p > 0]
+entropy ps = -P.sum [p * P.logBase 2 p | p <- ps, p > 0]
 
 -- | Normalised mutual information between two signals, computed on 3-digit
 -- discretisations.  NMI = I(X;Y) / min(H(X),H(Y)) is 0 for independence and
@@ -647,11 +646,16 @@ modelSummary rs = do
     printInfo i =
       putStrLn $
         unpack (infoName i)
-          <> ": H(X)=" <> show (infoHX i)
-          <> " H(Y)=" <> show (infoHY i)
-          <> " H(X,Y)=" <> show (infoHXY i)
-          <> " MI=" <> show (infoMI i)
-          <> " NMI=" <> show (infoNMI i)
+          <> ": H(X)="
+          <> show (infoHX i)
+          <> " H(Y)="
+          <> show (infoHY i)
+          <> " H(X,Y)="
+          <> show (infoHXY i)
+          <> " MI="
+          <> show (infoMI i)
+          <> " NMI="
+          <> show (infoNMI i)
     printResult r = do
       putStrLn $
         unpack (regName r)

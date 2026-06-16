@@ -129,4 +129,3 @@ rebase n n' xs = fmap (/ head xs') xs'
 
 reindex :: Int -> Int -> ([a] -> [b]) -> [a] -> [b]
 reindex n n' f xs = drop n' $ f $ taker (n + n') xs
-

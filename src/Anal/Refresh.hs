@@ -21,7 +21,7 @@ import Data.Text (Text, pack, unpack)
 import Data.Time
 import NumHask.Prelude hiding (fold)
 import Prettychart
-import qualified Prelude as P
+import Prelude qualified as P
 
 fmt :: Double -> Text
 fmt = fixed (Just 4)
@@ -228,7 +228,7 @@ refresh = do
 
   -- median minus mean chart
   let mvm = second' ((\a b -> b - a) <$> ma 0.99 <*> median 0.99)
-      mvmChart = dayChart ["median - mean"] (drop 1000 $ fmap (second (:[])) $ scan mvm (taker 2000 r))
+      mvmChart = dayChart ["median - mean"] (drop 1000 $ fmap (second (: [])) $ scan mvm (taker 2000 r))
   writeChartOptions "other/mvm.svg" mvmChart
   putStrLn "wrote other/mvm.svg"
 

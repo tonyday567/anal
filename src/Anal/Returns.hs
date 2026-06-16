@@ -6,8 +6,10 @@
 module Anal.Returns where
 
 import Chart
+import Circuit.Parser (Parser, char, runParserError, runParserMaybe, satisfy, some)
+import Circuit.Parser.Primitives (double, int, isDigit, signed, strToUtf8)
 import Data.Bifunctor
-import Data.ByteString (ByteString) 
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as C
 import Data.Map qualified as Map
@@ -17,8 +19,6 @@ import Data.Profunctor
 import Data.Text (unpack)
 import Data.Time
 import Data.Time.Format.ISO8601
-import Circuit.Parser (Parser, satisfy, runParserMaybe, runParserError, char, some)
-import Circuit.Parser.Primitives (isDigit, double, int, signed, strToUtf8)
 import NumHask.Prelude hiding (diff, fold, some)
 
 -- $setup
@@ -27,7 +27,6 @@ import NumHask.Prelude hiding (diff, fold, some)
 -- >>> import Anal.Returns
 -- >>> import Circuit.Parser
 -- >>> import Data.Time.Calendar
-
 
 -- | Day parser, consumes separator
 --
