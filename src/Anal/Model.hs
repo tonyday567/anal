@@ -231,7 +231,7 @@ solveLinear a0 b0 =
         | otherwise =
             let (pre, rest) = P.splitAt i m
                 (mid, post) = P.splitAt (j - i) rest
-             in (pre P.<> ([P.head post] ++ P.tail mid ++ [P.head mid] ++ P.tail post))
+             in (pre P.<> [P.head post] P.<> P.tail mid P.<> [P.head mid] P.<> P.tail post)
       forward m k
         | k == n = m
         | otherwise =
@@ -254,7 +254,7 @@ solveLinear a0 b0 =
                   let row = m P.!! i
                       sumKnown = P.sum [row P.!! j * sol P.!! j | j <- [i + 1 .. n - 1]]
                       xi = (row P.!! n - sumKnown) / row P.!! i
-                   in loop (i - 1) (P.take i sol P.<> ([xi] ++ P.drop (i + 1) sol))
+                   in loop (i - 1) (P.take i sol P.<> [xi] P.<> P.drop (i + 1) sol)
          in loop (n - 1) (P.replicate n 0)
    in back (forward aug 0)
 
@@ -408,7 +408,7 @@ thresholdSensitivity rs qs weights eps =
   let base = strategyFinalFromSign (signForecast "r_{t-1}" (delay1 0) qs rs) weights rs
       n = P.length qs
       sens i =
-        let qs' = (P.take i qs P.<> ([qs P.!! i + eps] ++ P.drop (i + 1) qs))
+        let qs' = (P.take i qs P.<> [qs P.!! i + eps] P.<> P.drop (i + 1) qs))
             final = strategyFinalFromSign (signForecast "r_{t-1}" (delay1 0) qs' rs) weights rs
          in (qs P.!! i, (final - base) / eps)
    in P.fmap sens [0 .. n - 1]
