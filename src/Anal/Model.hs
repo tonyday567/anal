@@ -53,7 +53,7 @@ lag1 x0 xs = x0 : P.init xs
 
 -- | Lag a series by k observations.
 lagk :: Int -> a -> [a] -> [a]
-lagk k x0 xs = P.replicate k x0 ++ P.take (P.length xs - k) xs
+lagk k x0 xs = P.replicate k x0 P.<> P.take (P.length xs - k) xs
 
 -- | Autocorrelation at lag k using the classical correlation estimator.
 acf :: Int -> [Double] -> Double
@@ -83,7 +83,7 @@ simpleReg r x y = fold (reg1 (ma r)) (regPairs x y)
 -- fitted values.
 rSquared :: (ExpField a) => [a] -> [a] -> a -> a -> a
 rSquared x y intercept slope =
-  let yhat = P.map (\xi -> intercept + slope * xi) x
+  let yhat = P.fmap (\xi -> intercept + slope * xi) x
    in fold (corrGauss one) (regPairs y yhat) ** (one + one)
 
 -- | Result of a single simple regression, including residual diagnostics.
@@ -177,12 +177,12 @@ data MagnitudeResult = MagnitudeResult
 -- day t-1.
 magnitudeModel :: [Double] -> MagnitudeResult
 magnitudeModel rs =
-  let absR = P.map abs rs
+  let absR = P.fmap abs rs
       s = scan (std 0.01) rs
       as = scan (ma 0.01) s
       sL = lag1 0 s
       (intercept, slope) = simpleReg one sL absR
-      predMag = P.map (\x -> intercept + slope * x) sL
+      predMag = P.fmap (\x -> intercept + slope * x) sL
    in MagnitudeResult
         { absReturns = absR,
           stdSeries = s,
@@ -203,12 +203,12 @@ maDiffMealy r = (\x m -> x - m) <$> id <*> ma r
 fitSimple :: Text -> [Double] -> [Double] -> RegResult
 fitSimple name x y =
   let (intercept, slope) = simpleReg one x y
-      yhat = P.map (\xi -> intercept + slope * xi) x
+      yhat = P.fmap (\xi -> intercept + slope * xi) x
       res = P.drop 1000 $ P.zipWith (-) y yhat
       m = fold (ma one) res
       s = fold (std one) res
       ac1 = acf 1 res
-      ac1sq = acf 1 (P.map (** 2) res)
+      ac1sq = acf 1 (P.fmap (** 2) res)
    in RegResult
         { regName = name,
           regAlpha = intercept,
@@ -225,18 +225,18 @@ fitSimple name x y =
 solveLinear :: [[Double]] -> [Double] -> [Double]
 solveLinear a0 b0 =
   let n = P.length a0
-      aug = [row ++ [b0 P.!! i] | (i, row) <- zip [0 ..] a0]
+      aug = [row P.<> [b0 P.!! i] | (i, row) <- zip [0 ..] a0]
       swap i j m
         | i == j = m
         | otherwise =
             let (pre, rest) = P.splitAt i m
                 (mid, post) = P.splitAt (j - i) rest
-             in pre ++ [P.head post] ++ P.tail mid ++ [P.head mid] ++ P.tail post
+             in (pre P.<> ([P.head post] ++ P.tail mid ++ [P.head mid] ++ P.tail post))
       forward m k
         | k == n = m
         | otherwise =
             let col = [m P.!! i P.!! k | i <- [k .. n - 1]]
-                pivotVal = P.maximum (P.map P.abs col)
+                pivotVal = P.maximum (P.fmap P.abs col)
                 pivotRow = k + P.length (P.takeWhile (\x -> P.abs x /= pivotVal) col)
                 m1 = swap k pivotRow m
                 piv = m1 P.!! k P.!! k
@@ -244,7 +244,7 @@ solveLinear a0 b0 =
                   | i == k = row
                   | otherwise =
                       let factor = row P.!! k / piv
-                       in P.zipWith (-) row (P.map (* factor) (m1 P.!! k))
+                       in P.zipWith (-) row (P.fmap (* factor) (m1 P.!! k))
                 m2 = [eliminate i (m1 P.!! i) | i <- [0 .. n - 1]]
              in forward m2 (k + 1)
       back m =
@@ -254,7 +254,7 @@ solveLinear a0 b0 =
                   let row = m P.!! i
                       sumKnown = P.sum [row P.!! j * sol P.!! j | j <- [i + 1 .. n - 1]]
                       xi = (row P.!! n - sumKnown) / row P.!! i
-                   in loop (i - 1) (P.take i sol ++ [xi] ++ P.drop (i + 1) sol)
+                   in loop (i - 1) (P.take i sol P.<> ([xi] ++ P.drop (i + 1) sol))
          in loop (n - 1) (P.replicate n 0)
    in back (forward aug 0)
 
@@ -283,12 +283,12 @@ fitMulti ::
   MultiRegResult
 fitMulti name names xs y =
   let fs0 = transpose xs
-      fs = P.map (1 :) fs0
+      fs = P.fmap (1 :) fs0
       pairs = P.drop 1000 $ P.zip fs y
-      coeffs = ridgeSolve 1e-6 (P.map fst pairs) (P.map snd pairs)
+      coeffs = ridgeSolve 1e-6 (P.fmap fst pairs) (P.fmap snd pairs)
       alpha = P.head coeffs
       betaList = P.tail coeffs
-      yhat = P.map (\xrow -> P.sum (P.zipWith (*) coeffs xrow)) fs
+      yhat = P.fmap (\xrow -> P.sum (P.zipWith (*) coeffs xrow)) fs
       res = P.drop 1000 $ P.zipWith (-) y yhat
       m = fold (ma one) res
       s = fold (std one) res
@@ -301,7 +301,7 @@ fitMulti name names xs y =
           multiResMean = m,
           multiResStd = s,
           multiResAutocorr = acf 1 res,
-          multiResSqAutocorr = acf 1 (P.map (** 2) res)
+          multiResSqAutocorr = acf 1 (P.fmap (** 2) res)
         }
 
 -- | A GARCH(1,1) variance Mealy: given a return, update the conditional
@@ -374,7 +374,7 @@ signForecastR r name sig qs rs =
    in SignForecastResult
         { sfName = name,
           sfThresholds = thresholds,
-          sfBuckets = P.map (\(k, _) -> bucketStats k) (Map.toAscList sums),
+          sfBuckets = P.fmap (\(k, _) -> bucketStats k) (Map.toAscList sums),
           sfBucketReturns = returnsMap
         }
 
@@ -408,10 +408,10 @@ thresholdSensitivity rs qs weights eps =
   let base = strategyFinalFromSign (signForecast "r_{t-1}" (delay1 0) qs rs) weights rs
       n = P.length qs
       sens i =
-        let qs' = P.take i qs ++ [qs P.!! i + eps] ++ P.drop (i + 1) qs
+        let qs' = (P.take i qs P.<> ([qs P.!! i + eps] ++ P.drop (i + 1) qs))
             final = strategyFinalFromSign (signForecast "r_{t-1}" (delay1 0) qs' rs) weights rs
          in (qs P.!! i, (final - base) / eps)
-   in P.map sens [0 .. n - 1]
+   in P.fmap sens [0 .. n - 1]
 
 -- | Finite-difference sensitivity of the strategy final return to the online
 -- quantile-estimation decay rate @r@ used by 'digitize'.
@@ -419,20 +419,20 @@ digitizeDecaySensitivity :: [Double] -> [Double] -> [Double] -> Double -> [(Doub
 digitizeDecaySensitivity rs qs weights eps =
   let run r = strategyFinalFromSign (signForecastR r "r_{t-1}" (delay1 0) qs rs) weights rs
       rs' = [0.995, 0.996, 0.997]
-   in P.map (\r -> (r, (run (r + eps) - run r) / eps)) rs'
+   in P.fmap (\r -> (r, (run (r + eps) - run r) / eps)) rs'
 
 -- | R^2 of the simple magnitude model |r_t| ~ std_{t-1} for a range of decay
 -- rates, useful for visualising the gradient of model fit around the current
 -- rate.
 stdDecaySensitivity :: [Double] -> [(Double, Double)]
 stdDecaySensitivity rs =
-  let absR = P.map abs rs
+  let absR = P.fmap abs rs
       run r =
         let sL = lag1 0 $ scan (std r) rs
             (a, b) = simpleReg one sL absR
          in rSquared sL absR a b
       rs' = [0.001, 0.005, 0.01, 0.02, 0.05]
-   in P.map (\r -> (r, run r)) rs'
+   in P.fmap (\r -> (r, run r)) rs'
 
 -- | Simulate many paths from the bucket residual model and apply a set of
 -- bucket weights.  Returns are bootstrapped within each bucket, preserving
@@ -477,14 +477,14 @@ simulateStrategy sf weights nPaths len = do
       meanB = fold (ma 1) bhFinals :: Double
       stdB = fold (std 1) bhFinals :: Double
       beat :: Double
-      beat = fromIntegral (P.length (P.filter (\(s, b) -> s > b) (P.zip stratFinals bhFinals))) / fromIntegral nPaths
+      beat = fromIntegral (P.length (P.filter (P.uncurry (P.>)) (P.zip stratFinals bhFinals))) / fromIntegral nPaths
       result = SimResult stratFinals bhFinals meanS stdS meanB stdB beat
   pure result
 
 -- | Compute stationarity, memory, and forecast-decay statistics.
 memoryReport :: [Double] -> MemoryReport
 memoryReport rs =
-  let absR = P.map abs rs
+  let absR = P.fmap abs rs
       s = scan (std 0.01) rs
       lags = [1, 2, 3, 5, 10, 20]
       (_, dfBeta, dfR2) = dickeyFuller absR
@@ -493,9 +493,9 @@ memoryReport rs =
       (a1, b1) = simpleReg one sL1 absR
       (a2, b2) = simpleReg one sL2 absR
    in MemoryReport
-        { acfReturns = P.map (\k -> (k, acf k rs)) lags,
-          acfAbs = P.map (\k -> (k, acf k absR)) lags,
-          acfStd = P.map (\k -> (k, acf k s)) lags,
+        { acfReturns = P.fmap (\k -> (k, acf k rs)) lags,
+          acfAbs = P.fmap (\k -> (k, acf k absR)) lags,
+          acfStd = P.fmap (\k -> (k, acf k s)) lags,
           dickeyFullerBeta = dfBeta,
           dickeyFullerR2 = dfR2,
           r2OneDay = rSquared sL1 absR a1 b1,
@@ -506,7 +506,7 @@ memoryReport rs =
 digit3 :: [Double] -> [Int]
 digit3 xs =
   let thresholds = fold (quantiles 0.996 [one / 3, (one + one) / 3]) xs
-   in P.map (toBucket thresholds) xs
+   in P.fmap (toBucket thresholds) xs
 
 -- | Shannon entropy from a probability distribution (base 2).
 entropy :: [Double] -> Double
@@ -564,7 +564,7 @@ infoReport rs =
 -- | Fit all the magnitude models and return their statistics.
 modelStats :: [Double] -> [RegResult]
 modelStats rs =
-  let absR = P.map abs rs
+  let absR = P.fmap abs rs
       s = scan (std 0.01) rs
       as = scan (ma 0.01) s
       sL = lag1 0 s
@@ -585,7 +585,7 @@ modelStats rs =
 -- moving-average-difference kernels at weekly, monthly and yearly horizons.
 horizonMagnitudeModel :: [Double] -> MultiRegResult
 horizonMagnitudeModel rs =
-  let absR = P.map abs rs
+  let absR = P.fmap abs rs
       absRL = lag1 0 absR
       weekly = lag1 0 $ scan (maDiffMealy 0.8) absR
       monthly = lag1 0 $ scan (maDiffMealy 0.95) absR
@@ -622,7 +622,7 @@ modelSummary rs = do
   printSignForecast (signForecast "r_{t-2}" (delay1 0 >>> delay1 0) qs rs)
 
   putStrLn "--- stationarity / memory ---"
-  let absR = P.map abs rs
+  let absR = P.fmap abs rs
       s = scan (std 0.01) rs
   putStrLn "autocorrelations of returns:"
   P.mapM_ (\k -> putStrLn $ "  lag " <> show k <> ": " <> show (acf k rs)) [1, 2, 3, 5, 10, 20]

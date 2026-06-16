@@ -1,7 +1,7 @@
-{-# LANGUAGE OverloadedLabels #-}
+
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RebindableSyntax #-}
-{-# LANGUAGE TupleSections #-}
+
 
 -- | Refresh the analyses from readme.org and write the resulting charts.
 module Anal.Refresh
@@ -43,7 +43,7 @@ row r =
 
 writeDashboard :: [RegResult] -> MultiRegResult -> [InfoResult] -> SignForecastResult -> (Double, Double, Double, Double, Double) -> SimResult -> MemoryReport -> IO ()
 writeDashboard stats multi infoResults signResult (stratFinal, bhFinal, avgWeight, avgTrade, annFactor) sim memReport = do
-  let bestR2 = P.max (P.maximum (P.map regR2 stats)) (multiR2 multi)
+  let bestR2 = P.max (P.maximum (fmap regR2 stats)) (multiR2 multi)
       html =
         mconcat
           [ "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Anal Dashboard</title>\n<style>",
@@ -88,7 +88,7 @@ writeDashboard stats multi infoResults signResult (stratFinal, bhFinal, avgWeigh
       mconcat
         [ "<h2>Model comparison</h2>",
           "<table><thead><tr><th>Model</th><th>α</th><th>β</th><th>R²</th><th>residual mean</th><th>residual std</th><th>residual autocorr</th><th>squared residual autocorr</th></tr></thead><tbody>",
-          mconcat (P.map row stats),
+          mconcat (fmap row stats),
           "</tbody></table>"
         ]
     multiSection =
@@ -97,7 +97,7 @@ writeDashboard stats multi infoResults signResult (stratFinal, bhFinal, avgWeigh
           "<p class=\"subtitle\">Calibrating a baseline lagged absolute return against moving-average-difference kernels at weekly (0.8), monthly (0.95) and yearly (0.996) horizons. All predictors are lagged by one day.</p>",
           "<table><thead><tr><th>feature</th><th>beta</th></tr></thead><tbody>",
           "<tr><td>α</td><td>" <> fmt (multiAlpha multi) <> "</td></tr>",
-          mconcat (P.map multiRow (P.zip (multiBetaNames multi) (multiBetas multi))),
+          mconcat (zipWith (curry multiRow) (multiBetaNames multi) (multiBetas multi)),
           "</tbody></table>",
           "<table><thead><tr><th>metric</th><th>value</th></tr></thead><tbody>",
           "<tr><td>R²</td><td>" <> fmt (multiR2 multi) <> "</td></tr>",
@@ -135,7 +135,7 @@ writeDashboard stats multi infoResults signResult (stratFinal, bhFinal, avgWeigh
           "<p class=\"subtitle\">Signal: <code>" <> sfName signResult <> "</code>. Returns are split into quantile buckets; the bar shows the mean next-day return for each bucket. Extreme buckets isolate the tails, so a genuine sign signal would show low buckets negative and high buckets positive.</p>",
           "<div class=\"row\"><div class=\"card\"><img src=\"sign_forecast.svg\" alt=\"Sign forecast\"></div></div>",
           "<table><thead><tr><th>bucket</th><th>mean next-day return</th><th>std</th><th>count</th></tr></thead><tbody>",
-          mconcat (P.map signRow (sfBuckets signResult)),
+          mconcat (fmap signRow (sfBuckets signResult)),
           "</tbody></table>"
         ]
     signRow (b, m, s, n) =
@@ -145,7 +145,7 @@ writeDashboard stats multi infoResults signResult (stratFinal, bhFinal, avgWeigh
         [ "<h2>Information coefficients (3-digit NMI)</h2>",
           "<p class=\"subtitle\">Each series is split into three tertile digits ([0.33, 0.67]). The joint 3×3 table gives Shannon entropies and normalised mutual information. NMI = 0 means independence; NMI = 1 means a deterministic relationship.</p>",
           "<table><thead><tr><th>pair</th><th>H(X)</th><th>H(Y)</th><th>H(X,Y)</th><th>MI</th><th>NMI</th></tr></thead><tbody>",
-          mconcat (P.map infoRow infoResults),
+          mconcat (fmap infoRow infoResults),
           "</tbody></table>"
         ]
       where
@@ -186,7 +186,7 @@ writeDashboard stats multi infoResults signResult (stratFinal, bhFinal, avgWeigh
         [ "<h2>Stationarity, memory and forecast decay</h2>",
           "<p class=\"subtitle\">Autocorrelations show that raw returns are close to white noise, while |r| and the Mealy std are highly persistent. The Dickey-Fuller regression on |r| rejects a unit root (beta is negative) but the process has long memory. The two-day magnitude forecast loses almost none of its explanatory power, so the std signal decays very slowly.</p>",
           "<table><thead><tr><th>lag</th><th>acf(returns)</th><th>acf(|r|)</th><th>acf(std 0.01)</th></tr></thead><tbody>",
-          mconcat (P.map acfRow (P.zip3 (acfReturns memReport) (acfAbs memReport) (acfStd memReport))),
+          mconcat (fmap acfRow (P.zip3 (acfReturns memReport) (acfAbs memReport) (acfStd memReport))),
           "</tbody></table>",
           "<table><thead><tr><th>test</th><th>value</th></tr></thead><tbody>",
           "<tr><td>Dickey-Fuller beta on |r|</td><td>" <> fmt (dickeyFullerBeta memReport) <> "</td></tr>",
@@ -267,7 +267,7 @@ refresh = do
   let ps = snd <$> prices
       pLast = P.last ps
       returnsBack = P.reverse $ snd <$> r
-      priceInverse = M (\_ -> pLast) (\p ret -> p / exp ret) id
+      priceInverse = M (const pLast) (\p ret -> p / exp ret) id
       priceBack = scan priceInverse (0 : returnsBack)
       reconPrices = P.reverse priceBack
       maxPriceErr = P.maximum $ P.zipWith (\a b -> abs (a - b)) ps reconPrices
@@ -293,9 +293,9 @@ refresh = do
   -- residual histograms
   let res = P.drop 1000 $ residuals mm
       resStd = fold (std one) res
-      stdRes = P.map (/ resStd) res
-      resRange = maybe (Range (-1) 1) id (space1 res)
-      stdResRange = maybe (Range (-5) 5) id (space1 stdRes)
+      stdRes = fmap (/ resStd) res
+      resRange = Data.Maybe.fromMaybe (Range (-1) 1) (space1 res)
+      stdResRange = Data.Maybe.fromMaybe (Range (-5) 5) (space1 stdRes)
   writeChartOptions "other/resid_hist.svg" (histChart resRange 60 res)
   putStrLn "wrote other/resid_hist.svg"
   writeChartOptions "other/stdresid_hist.svg" (histChart stdResRange 60 stdRes)
@@ -305,8 +305,8 @@ refresh = do
   let qs = [0.1, 0.4, 0.5, 0.6, 0.9] :: [Double]
       signResult = signForecast "r_{t-1}" (delay1 0) qs returns
       signBuckets = sfBuckets signResult
-      signLabels = P.map (\(b, _, _, _) -> pack (show b)) signBuckets
-      signMeans = P.map (\(_, m, _, _) -> m) signBuckets
+      signLabels = fmap (\(b, _, _, _) -> pack (show b)) signBuckets
+      signMeans = fmap (\(_, m, _, _) -> m) signBuckets
       signChart = barChart defaultBarOptions (BarData [signMeans] signLabels ["mean next-day return"])
   writeChartOptions "other/sign_forecast.svg" signChart
   putStrLn "wrote other/sign_forecast.svg"
@@ -314,15 +314,15 @@ refresh = do
   -- signal-based strategy: map the r_{t-1} bucket to a [0,1] weight and go long
   let sigMealy = (,) <$> id <*> (delay1 0 >>> digitize 0.996 qs)
       sigged = P.drop 1000 $ scan (second' sigMealy) r
-      weights = P.map (\(_, (_, b)) -> (5 - fromIntegral b :: Double) / 5) sigged
-      rets = P.map (fst . snd) sigged :: [Double]
+      weights = fmap (\(_, (_, b)) -> (5 - fromIntegral b :: Double) / 5) sigged
+      rets = fmap (fst . snd) sigged :: [Double]
       stratRets = P.zipWith (*) weights rets
       bhCum = scan (dipure (+)) rets :: [Double]
       stratCum = scan (dipure (+)) stratRets :: [Double]
-      stratData = P.zip (P.map fst sigged) (P.zipWith (\s b -> [s, b]) stratCum bhCum)
+      stratData = P.zip (fmap fst sigged) (P.zipWith (\s b -> [s, b]) stratCum bhCum)
       stratChart = dayChart ["signal strategy", "buy & hold"] stratData
       avgWeight = fold (ma 1) weights
-      avgTrade = fold (ma 1) (P.map abs (P.zipWith (-) (P.tail weights) weights))
+      avgTrade = fold (ma 1) (fmap abs (P.zipWith (-) (P.tail weights) weights))
   writeChartOptions "other/signal_strategy.svg" stratChart
   putStrLn "wrote other/signal_strategy.svg"
   putStrLn $ "signal strategy final return: " <> show (P.last stratCum)
@@ -339,8 +339,8 @@ refresh = do
   sim <- simulateStrategy signResult bucketWeights 1000 (P.length sigged)
   let simStrat = simStrategyFinals sim
       simBH = simBuyHoldFinals sim
-      simStratRange = maybe (Range 0 5) id (space1 simStrat)
-      simBHRange = maybe (Range 0 5) id (space1 simBH)
+      simStratRange = Data.Maybe.fromMaybe (Range 0 5) (space1 simStrat)
+      simBHRange = Data.Maybe.fromMaybe (Range 0 5) (space1 simBH)
   writeChartOptions "other/sim_strat_hist.svg" (histChart simStratRange 40 simStrat)
   putStrLn "wrote other/sim_strat_hist.svg"
   writeChartOptions "other/sim_bh_hist.svg" (histChart simBHRange 40 simBH)
@@ -380,13 +380,13 @@ refresh = do
 
   let signResult2000 = signForecast "r_{t-1}" (delay1 0) qs returns2000
       sigged2000 = P.drop 1000 $ scan (second' sigMealy) r2000
-      weights2000 = P.map (\(_, (_, b)) -> (5 - fromIntegral b :: Double) / 5) sigged2000
-      rets2000 = P.map (fst . snd) sigged2000 :: [Double]
+      weights2000 = fmap (\(_, (_, b)) -> (5 - fromIntegral b :: Double) / 5) sigged2000
+      rets2000 = fmap (fst . snd) sigged2000 :: [Double]
       stratRets2000 = P.zipWith (*) weights2000 rets2000
       stratCum2000 = scan (dipure (+)) stratRets2000 :: [Double]
       bhCum2000 = scan (dipure (+)) rets2000 :: [Double]
       avgWeight2000 = fold (ma 1) weights2000
-      avgTrade2000 = fold (ma 1) (P.map abs (P.zipWith (-) (P.tail weights2000) weights2000))
+      avgTrade2000 = fold (ma 1) (fmap abs (P.zipWith (-) (P.tail weights2000) weights2000))
       ann2000 x = x / (fromIntegral (P.length returns2000) / 250.0)
   putStrLn "--- signal strategy since 2000 ---"
   putStrLn $ "signal strategy final return: " <> show (P.last stratCum2000)

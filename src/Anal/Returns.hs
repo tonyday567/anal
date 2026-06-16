@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedLabels #-}
+
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RebindableSyntax #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
@@ -42,7 +42,7 @@ dayP = do
   pure $ fromGregorian (fromIntegral y :: Integer) m d
 
 fredP :: Parser ByteString Char (Day, Either () Double)
-fredP = (,) <$> dayP <*> ((char ',') *> (Right <$> double))
+fredP = (,) <$> dayP <*> (char ',' *> (Right <$> double))
 
 -- | Day parser, consumes separator
 --
@@ -64,7 +64,7 @@ numString :: Parser ByteString Char String
 numString = filter (/= ',') <$> some (satisfy (\x -> isDigit x || (x == '.') || (x == ',')))
 
 auinvP :: Parser ByteString Char (Day, String)
-auinvP = (,) <$> quoted dayP' <*> ((char ',') *> quoted numString)
+auinvP = (,) <$> quoted dayP' <*> (char ',' *> quoted numString)
 
 getPricesFred :: IO [(Day, Double)]
 getPricesFred = do
