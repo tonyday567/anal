@@ -408,7 +408,7 @@ thresholdSensitivity rs qs weights eps =
   let base = strategyFinalFromSign (signForecast "r_{t-1}" (delay1 0) qs rs) weights rs
       n = P.length qs
       sens i =
-        let qs' = (P.take i qs P.<> [qs P.!! i + eps] P.<> P.drop (i + 1) qs))
+        let qs' = P.take i qs P.<> [qs P.!! i + eps] P.<> P.drop (i + 1) qs
             final = strategyFinalFromSign (signForecast "r_{t-1}" (delay1 0) qs' rs) weights rs
          in (qs P.!! i, (final - base) / eps)
    in P.fmap sens [0 .. n - 1]

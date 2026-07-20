@@ -14,6 +14,7 @@ import Anal.Model
 import Anal.Returns
 import Chart
 import Data.Bifunctor
+import Data.Maybe (fromMaybe)
 import Data.Mealy
 import Data.Mealy.Quantiles
 import Data.Profunctor
@@ -294,8 +295,8 @@ refresh = do
   let res = P.drop 1000 $ residuals mm
       resStd = fold (std one) res
       stdRes = fmap (/ resStd) res
-      resRange = Data.Maybe.fromMaybe (Range (-1) 1) (space1 res)
-      stdResRange = Data.Maybe.fromMaybe (Range (-5) 5) (space1 stdRes)
+      resRange = fromMaybe (Range (-1) 1) (space1 res)
+      stdResRange = fromMaybe (Range (-5) 5) (space1 stdRes)
   writeChartOptions "other/resid_hist.svg" (histChart resRange 60 res)
   putStrLn "wrote other/resid_hist.svg"
   writeChartOptions "other/stdresid_hist.svg" (histChart stdResRange 60 stdRes)
@@ -339,8 +340,8 @@ refresh = do
   sim <- simulateStrategy signResult bucketWeights 1000 (P.length sigged)
   let simStrat = simStrategyFinals sim
       simBH = simBuyHoldFinals sim
-      simStratRange = Data.Maybe.fromMaybe (Range 0 5) (space1 simStrat)
-      simBHRange = Data.Maybe.fromMaybe (Range 0 5) (space1 simBH)
+      simStratRange = fromMaybe (Range 0 5) (space1 simStrat)
+      simBHRange = fromMaybe (Range 0 5) (space1 simBH)
   writeChartOptions "other/sim_strat_hist.svg" (histChart simStratRange 40 simStrat)
   putStrLn "wrote other/sim_strat_hist.svg"
   writeChartOptions "other/sim_bh_hist.svg" (histChart simBHRange 40 simBH)
