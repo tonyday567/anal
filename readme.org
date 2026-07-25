@@ -23,7 +23,7 @@ import Data.Time
 import Data.Time.Calendar
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C
-import Data.Mealy
+import Process.Stats
 import Data.Profunctor
 import Data.Maybe
 import Data.Bifunctor
@@ -73,7 +73,7 @@ disp $ dayChart ["accumulated return"] (fmap (second (:[])) (taker 200 accret))
 **** mean versus 40th, 50th, 60th quantiles
 
 #+begin_src haskell :file other/mvq.svg :results output graphics file :exports both
-mvq = (second' ((\a b -> a:(b!!1-a):b) <$> ma 0.99 <*> Data.Mealy.Quantiles.quantiles 0.99 [0.4,0.5,0.6]))
+mvq = (second' ((\a b -> a:(b!!1-a):b) <$> ma 0.99 <*> Process.Stats.Quantiles.quantiles 0.99 [0.4,0.5,0.6]))
 
 c = dayChart ["mean", "skew", "40th", "median", "60th"] (drop 1000 $ scan mvq (taker 2000 r))
 disp c
@@ -128,7 +128,7 @@ take 10 d
 
 
 #+begin_src haskell :results output
-Data.Mealy.fold countM (snd . snd <$> d)
+Process.Stats.fold countM (snd . snd <$> d)
 #+end_src
 
 #+RESULTS:
@@ -204,7 +204,7 @@ disp betaSdDigitChart
 #+end_src
 
 #+RESULTS:
-: qBeta :: Mealy (Double, Double) Int
+: qBeta :: Process (Double, Double) Int
 : True
 
 
@@ -220,7 +220,7 @@ disp betaSdDigitChart
 Skew away from upper quantiles
 
 #+begin_src haskell :results output
-Data.Mealy.fold countM (snd <$> d)
+Process.Stats.fold countM (snd <$> d)
 #+end_src
 
 #+RESULTS:
@@ -363,7 +363,7 @@ sdCharts = compoundMerge [sdChart,betaChart, accChart & #hudOptions %~ finishHud
 
 qBeta = (second' (std decayStd) >>> beta1 (ma decayBeta1)) >>> digitize decayQ qs
 rDigit = reindex n dropN (scan qBeta) ri
-cs = Data.Mealy.fold countM (rDigit)
+cs = Process.Stats.fold countM (rDigit)
 qCountChart = barChart defaultBarOptions (BarData [fromIntegral <$> toList cs] (qRangeLabel qs) []) & #hudOptions % #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.2)]) & #hudOptions % #titles %~ (<> [(Priority 10, defaultTitle "quantile counts" & #buffer .~ 0.2 & #style % #color .~ palette1a 1 1)])
 
 qBetaChart = digitChart ((\x -> UTCTime x (P.fromInteger 0)) <$> days) (fromIntegral <$> rDigit) (quantileNames qs) & #hudOptions % #axes .~ []
@@ -410,7 +410,7 @@ sdCharts = compoundMerge [sdChart,betaChart, accChart & #hudOptions %~ finishHud
 
 qBeta = (second' (std decayStd) >>> beta1 (ma decayBeta1)) >>> digitize decayQ qs
 rDigit = reindex n dropN (scan qBeta) ri
-cs = Data.Mealy.fold countM (rDigit)
+cs = Process.Stats.fold countM (rDigit)
 qCountChart = barChart defaultBarOptions (BarData [fromIntegral <$> toList cs] (qRangeLabel qs) []) & #hudOptions % #frames %~ (<> [(Priority 30, defaultFrameOptions & #buffer .~ 0.2)]) & #hudOptions % #titles %~ (<> [(Priority 10, defaultTitle "quantile counts" & #buffer .~ 0.2 & #style % #color .~ palette1a 1 1)]) & #hudOptions % #axes %~ fmap (second (#bar .~ Nothing))
 
 

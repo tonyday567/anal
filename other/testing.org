@@ -22,7 +22,7 @@ import Data.Time
 import Data.Time.Calendar
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C
-import Data.Mealy
+import Process.Stats
 import Data.Profunctor
 import Data.Maybe
 import Data.Bifunctor
@@ -93,7 +93,7 @@ disp c
 **** mean versus 40th, 50th, 60th quantiles
 
 #+begin_src haskell :file other/mvq.svg :results output graphics file :exports both
-mvq = (second' ((\a b -> a:(b!!1-a):b) <$> ma 0.99 <*> Data.Mealy.Quantiles.quantiles 0.99 [0.4,0.5,0.6]))
+mvq = (second' ((\a b -> a:(b!!1-a):b) <$> ma 0.99 <*> Process.Stats.Quantiles.quantiles 0.99 [0.4,0.5,0.6]))
 
 c = dayChart ["mean", "skew", "40th", "median", "60th"] (drop 1000 $ scan mvq (taker 2000 r))
 disp c
@@ -147,7 +147,7 @@ length r'
 Daily average & stdev return
 
  #+begin_src haskell
-bimap (percent commaSF (Just 3)) (percent commaSF (Just 3)) $ Data.Mealy.fold ((,) <$> (ma 1) <*> (std 1)) $ (snd <$> r')
+bimap (percent commaSF (Just 3)) (percent commaSF (Just 3)) $ Process.Stats.fold ((,) <$> (ma 1) <*> (std 1)) $ (snd <$> r')
  #+end_src
 
 #+RESULTS:
@@ -156,7 +156,7 @@ bimap (percent commaSF (Just 3)) (percent commaSF (Just 3)) $ Data.Mealy.fold ((
 annualised
 
  #+begin_src haskell
-bimap (percent commaSF (Just 3)) (percent commaSF (Just 3)) $ bimap (*250) (*sqrt(250)) <$> Data.Mealy.fold  ((,) <$> (ma 1) <*> (std 1)) $ (snd <$> r')
+bimap (percent commaSF (Just 3)) (percent commaSF (Just 3)) $ bimap (*250) (*sqrt(250)) <$> Process.Stats.fold  ((,) <$> (ma 1) <*> (std 1)) $ (snd <$> r')
  #+end_src
 
 #+RESULTS:
@@ -168,7 +168,7 @@ bimap (percent commaSF (Just 3)) (percent commaSF (Just 3)) $ bimap (*250) (*sqr
 *** charts
 
      #+begin_src haskell
-betaCheck :: Double -> Double -> Mealy Double (Double, Double)
+betaCheck :: Double -> Double -> Process Double (Double, Double)
 betaCheck b r = (,) <$> xs' <*> ma'
   where
     xs' = depState (\a m -> a + b * m) (ma (1 - r))

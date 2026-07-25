@@ -8,7 +8,7 @@ simulation, information coefficients and strategy gradients.
 
 - **Returns are close to white noise; volatility is not.**
   Autocorrelation of raw returns is near zero, while autocorrelation of
-  `|r|` and of the Mealy `std` is strong and persistent.
+  `|r|` and of the Process `std` is strong and persistent.
 
 - **Magnitude is forecastable, but only just.**
   The best one-step model we have is a multi-feature regression
@@ -73,7 +73,7 @@ simulation, information coefficients and strategy gradients.
    The next big gains probably come from smoothing the signal, not from
    a better magnitude forecast.
 
-5. **GARCH and the Mealy statistics are capturing the same latent factor.**
+5. **GARCH and the process statistics are capturing the same latent factor.**
    The fact that GARCH std wins on NMI while the multi-feature model
    matches it on `R²` suggests there is one dominant volatility factor.
    A model that combines GARCH with the `maDiff` kernels might reach
@@ -108,9 +108,9 @@ simulation, information coefficients and strategy gradients.
   thresholds. This would give true gradients w.r.t. thresholds and allow
   gradient-based optimisation of the whole pipeline.
 
-- **Use `Data.Mealy.Diff` for end-to-end gradients.**
+- **Use `Process.Stats.Diff` for end-to-end gradients.**
   Make the decay rates and regression coefficients parameters in a
-  differentiable Mealy network and backprop the final return or a risk
+  differentiable Process network and backprop the final return or a risk
   objective through the scan.
 
 - **Add external signals.**
@@ -137,6 +137,6 @@ simulation, information coefficients and strategy gradients.
   crypto to see which markets share the same AR(1)-in-volatility
   structure.
 
-- **Build a differentiable portfolio-weight Mealy.**
+- **Build a differentiable portfolio-weight Process.**
   Use the `Diff'` machinery to learn the mapping from signal to
   position size directly, with a Sharpe-ratio or drawdown objective.
