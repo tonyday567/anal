@@ -7,10 +7,11 @@ packages:
   ../numhask/numhask.cabal
   ../numhask-space/numhask-space.cabal
   ../formatn/formatn.cabal
-  ../mealy/mealy.cabal
+  ../process-stats/process-stats.cabal
   ../harpie/harpie.cabal
   ../harpie-numhask/harpie-numhask.cabal
   ../numhask-diff/numhask-diff.cabal
+  ../markup-parse/markup-parse.cabal
 
 write-ghc-environment-files: always
 

@@ -15,8 +15,8 @@ import Anal.Returns
 import Chart
 import Data.Bifunctor
 import Data.Maybe (fromMaybe)
-import Data.Mealy
-import Data.Mealy.Quantiles
+import Process.Stats
+import Process.Stats.Quantiles
 import Data.Profunctor
 import Data.Text (Text, pack, unpack)
 import Data.Time
@@ -83,7 +83,7 @@ writeDashboard stats multi infoResults signResult (stratFinal, bhFinal, avgWeigh
     header =
       mconcat
         [ "<h1>Anal: daily return magnitude models</h1>",
-          "<p class=\"subtitle\">Forecasting <code>|r_t|</code>, the absolute log-return of the S&amp;P 500, from lagged Mealy statistics. All predictors are known before day <code>t</code>.</p>"
+          "<p class=\"subtitle\">Forecasting <code>|r_t|</code>, the absolute log-return of the S&amp;P 500, from lagged Process statistics. All predictors are known before day <code>t</code>.</p>"
         ]
     tableSection =
       mconcat
@@ -114,7 +114,7 @@ writeDashboard stats multi infoResults signResult (stratFinal, bhFinal, avgWeigh
       mconcat
         [ "<div class=\"commentary\">",
           "<p>The best one-step magnitude forecast is now the multi-feature model, which explains about <strong>" <> fmt best <> "</strong> of the variance of <code>|r_t|</code>. It combines a baseline lagged absolute return (<code>|r_{t-1}|</code>) with moving-average-difference kernels at weekly, monthly and yearly horizons. The GARCH(1,1) conditional standard deviation is close behind. Daily return magnitude is only weakly predictable, which is what we expect for liquid markets.</p>",
-          "<p>Once the lagged absolute return is included, the residual autocorrelation drops to near zero for the multi-feature model. The simple one-lag predictors leave small but positive residual autocorrelation, showing that volatility clustering is partly a short-memory effect. The histograms below show the raw and standardized residuals from the Mealy-std model.</p>",
+          "<p>Once the lagged absolute return is included, the residual autocorrelation drops to near zero for the multi-feature model. The simple one-lag predictors leave small but positive residual autocorrelation, showing that volatility clustering is partly a short-memory effect. The histograms below show the raw and standardized residuals from the Process-std model.</p>",
           "</div>"
         ]
     histSection =
@@ -185,7 +185,7 @@ writeDashboard stats multi infoResults signResult (stratFinal, bhFinal, avgWeigh
     memorySection memReport =
       mconcat
         [ "<h2>Stationarity, memory and forecast decay</h2>",
-          "<p class=\"subtitle\">Autocorrelations show that raw returns are close to white noise, while |r| and the Mealy std are highly persistent. The Dickey-Fuller regression on |r| rejects a unit root (beta is negative) but the process has long memory. The two-day magnitude forecast loses almost none of its explanatory power, so the std signal decays very slowly.</p>",
+          "<p class=\"subtitle\">Autocorrelations show that raw returns are close to white noise, while |r| and the Process std are highly persistent. The Dickey-Fuller regression on |r| rejects a unit root (beta is negative) but the process has long memory. The two-day magnitude forecast loses almost none of its explanatory power, so the std signal decays very slowly.</p>",
           "<table><thead><tr><th>lag</th><th>acf(returns)</th><th>acf(|r|)</th><th>acf(std 0.01)</th></tr></thead><tbody>",
           mconcat (fmap acfRow (P.zip3 (acfReturns memReport) (acfAbs memReport) (acfStd memReport))),
           "</tbody></table>",
@@ -258,7 +258,7 @@ refresh = do
   -- inversion demo: reconstruct returns from accumulated returns
   let returns = snd <$> r
       accretS = scan (dipure (+)) returns
-      returnInverse = M (\a0 -> (0, a0)) (\(_, prev) cur -> (prev, cur)) (\(prev, cur) -> cur - prev)
+      returnInverse = Process (\a0 -> (0, a0)) (\(_, prev) cur -> (prev, cur)) (\(prev, cur) -> cur - prev)
       reconReturns = scan returnInverse accretS
   let maxReturnErr = P.maximum $ P.zipWith (\a b -> abs (a - b)) returns reconReturns
   putStrLn $ "return inversion max error: " <> show maxReturnErr
@@ -268,7 +268,7 @@ refresh = do
   let ps = snd <$> prices
       pLast = P.last ps
       returnsBack = P.reverse $ snd <$> r
-      priceInverse = M (const pLast) (\p ret -> p / exp ret) id
+      priceInverse = Process (const pLast) (\p ret -> p / exp ret) id
       priceBack = scan priceInverse (0 : returnsBack)
       reconPrices = P.reverse priceBack
       maxPriceErr = P.maximum $ P.zipWith (\a b -> abs (a - b)) ps reconPrices

@@ -46,14 +46,13 @@ library
     circuits-parser >=0.1 && <0.2,
     harpie >=0.1 && <0.4,
     these,
-    mealy >=0.4,
+    process-stats >=0.1 && <0.2,
     numhask >=0.13,
     optics-core >=0.4 && <0.5,
     prettychart >=0.2,
     profunctors >=5.6.2 && <5.7,
     text >=1.2 && <2.2,
     time >=1.9 && <1.13,
-    web-rep >=0.11,
 
   exposed-modules:
     Anal

@@ -1,13 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RebindableSyntax #-}
 
--- | Time-series models that view daily returns as regressions of Mealy statistics.
+-- | Time-series models that view daily returns as regressions of Process statistics.
 --
 -- The focus is on forecasting a well-defined target: the /magnitude/ of today's
 -- return, |r_t|, and the /sign/ of today's return via quantile-bucketing of a
 -- lagged signal.
 --
--- A GARCH(1,1) variance update is also a Mealy machine:
+-- A GARCH(1,1) variance update is also a Process machine:
 --
 -- > h_t = omega + alpha * r_{t-1}^2 + beta * h_{t-1}
 module Anal.Model
@@ -40,8 +40,8 @@ where
 
 import Data.List (foldl', transpose)
 import Data.Map.Strict qualified as Map
-import Data.Mealy
-import Data.Mealy.Quantiles
+import Process.Stats
+import Process.Stats.Quantiles
 import Data.Text (Text, unpack)
 import NumHask.Prelude hiding (fold)
 import System.Random
@@ -170,7 +170,7 @@ data MagnitudeResult = MagnitudeResult
   }
   deriving (Show)
 
--- | Forecast |r_t| from yesterday's Mealy standard deviation.
+-- | Forecast |r_t| from yesterday's Process standard deviation.
 --
 -- Uses the same fast-decay (0.01) Mealys that 'Anal.Refresh' reports, so the
 -- predictor is genuinely out-of-sample: std_{t-1} only knows returns up to
@@ -196,7 +196,7 @@ magnitudeModel rs =
 -- | A "difference from moving average" kernel: current value minus its
 -- exponential moving average with decay @r@.  Positive values mean the series
 -- is above its recent trend; negative values mean it is below.
-maDiffMealy :: Double -> Mealy Double Double
+maDiffMealy :: Double -> Process Double Double
 maDiffMealy r = (\x m -> x - m) <$> id <*> ma r
 
 -- | Fit a simple regression and collect residual diagnostics.
@@ -304,7 +304,7 @@ fitMulti name names xs y =
           multiResSqAutocorr = acf 1 (P.fmap (** 2) res)
         }
 
--- | A GARCH(1,1) variance Mealy: given a return, update the conditional
+-- | A GARCH(1,1) variance Process: given a return, update the conditional
 -- variance and emit the conditional standard deviation for the next period.
 garchMealy ::
   -- | initial variance h_0
@@ -315,8 +315,8 @@ garchMealy ::
   Double ->
   -- | beta
   Double ->
-  Mealy Double Double
-garchMealy h0 omega alphaG betaG = M inject step extract
+  Process Double Double
+garchMealy h0 omega alphaG betaG = Process inject step extract
   where
     inject r =
       let h = omega + alphaG * r * r + betaG * h0
@@ -333,8 +333,8 @@ garchMealy h0 omega alphaG betaG = M inject step extract
 signForecast ::
   -- | name for reporting
   Text ->
-  -- | signal Mealy
-  Mealy Double Double ->
+  -- | signal Process
+  Process Double Double ->
   -- | quantile thresholds
   [Double] ->
   -- | return series
@@ -347,17 +347,17 @@ signForecast = signForecastR 0.996
 signForecastR ::
   Double ->
   Text ->
-  Mealy Double Double ->
+  Process Double Double ->
   [Double] ->
   [Double] ->
   SignForecastResult
 signForecastR r name sig qs rs =
   let sigMealy = (,) <$> id <*> (sig >>> digitize r qs >>> delay1 0)
       sigged = P.drop 1000 $ scan sigMealy rs
-      sumMapM = M (\(v, k) -> Map.singleton k v) (\m (v, k) -> Map.insertWith (+) k v m) id
-      sqSumMapM = M (\(v, k) -> Map.singleton k (v * v)) (\m (v, k) -> Map.insertWith (+) k (v * v) m) id
-      countMapM = M (\a -> Map.singleton a one) (\m a -> Map.insertWith (+) a one m) id
-      returnsMapM = M (\(v, k) -> Map.singleton k [v]) (\m (v, k) -> Map.insertWith (++) k [v] m) id
+      sumMapM = Process (\(v, k) -> Map.singleton k v) (\m (v, k) -> Map.insertWith (+) k v m) id
+      sqSumMapM = Process (\(v, k) -> Map.singleton k (v * v)) (\m (v, k) -> Map.insertWith (+) k (v * v) m) id
+      countMapM = Process (\a -> Map.singleton a one) (\m a -> Map.insertWith (+) a one m) id
+      returnsMapM = Process (\(v, k) -> Map.singleton k [v]) (\m (v, k) -> Map.insertWith (++) k [v] m) id
       sums = fold sumMapM sigged
       sqSums = fold sqSumMapM sigged
       counts = fold countMapM (snd <$> sigged)
@@ -382,9 +382,9 @@ signForecastR r name sig qs rs =
 toBucket :: [Double] -> Double -> Int
 toBucket thresholds x = P.length (P.takeWhile (<= x) thresholds)
 
--- | Mealy that assigns a value to a bucket given fixed thresholds.
-bucketMealy :: [Double] -> Mealy Double Int
-bucketMealy thresholds = M (const 0) (\_ r -> toBucket thresholds r) id
+-- | Process that assigns a value to a bucket given fixed thresholds.
+bucketMealy :: [Double] -> Process Double Int
+bucketMealy thresholds = Process (const 0) (\_ r -> toBucket thresholds r) id
 
 -- | Final accumulated return of the bucket-weight strategy for a given
 -- 'SignForecastResult' and set of bucket weights.
@@ -517,8 +517,8 @@ entropy ps = -P.sum [p * P.logBase 2 p | p <- ps, p > 0]
 -- 1 for a deterministic relationship.
 infoCoefficient ::
   Text ->
-  Mealy Double Double ->
-  Mealy Double Double ->
+  Process Double Double ->
+  Process Double Double ->
   [Double] ->
   InfoResult
 infoCoefficient name sigX sigY rs =

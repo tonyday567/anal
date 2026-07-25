@@ -12,8 +12,8 @@ import Data.Foldable hiding (fold)
 import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Maybe
-import Data.Mealy
-import Data.Mealy.Quantiles
+import Process.Stats
+import Process.Stats.Quantiles
 import Data.Profunctor
 import Data.Text (Text, pack)
 import Data.Time
@@ -36,16 +36,16 @@ taker n = reverse . take n . reverse
 -- * signals
 
 -- | create a (1-day delayed) digitized signal,return pair stream
-sigRet :: Mealy a Double -> [Double] -> Double -> Mealy a (a, Int)
+sigRet :: Process a Double -> [Double] -> Double -> Process a (a, Int)
 sigRet sig qs r = (,) <$> id <*> (sig >>> digitize r qs >>> delay1 0)
 
 -- | mealy scan of a Day, Return tuple, dropping the first r scans
-scanRet :: Mealy a b -> Int -> Int -> [(c, a)] -> [(c, b)]
+scanRet :: Process a b -> Int -> Int -> [(c, a)] -> [(c, b)]
 scanRet m n r rs = drop r $ scan (second' m) $ taker (n + r) rs
 
 -- | Accumulate the return for n buckets based on a digitized signal
-accRetDigits :: Mealy (Double, Int) (Map.Map Int Double)
-accRetDigits = M (\(v, k) -> Map.singleton k v) (\m (v, k) -> Map.insertWith (+) k v m) id
+accRetDigits :: Process (Double, Int) (Map.Map Int Double)
+accRetDigits = Process (\(v, k) -> Map.singleton k v) (\m (v, k) -> Map.insertWith (+) k v m) id
 
 ardList :: Int -> Map.Map Int Double -> [Double]
 ardList n m = fromMaybe zero . flip Map.lookup m <$> [0 .. (n - 1)]
@@ -53,8 +53,7 @@ ardList n m = fromMaybe zero . flip Map.lookup m <$> [0 .. (n - 1)]
 qRangeLabel :: [Double] -> [Text]
 qRangeLabel =
   fold
-    ( M
-        (\a -> (a, ["< " <> (pack $ show a)]))
+    ( Process         (\a -> (a, ["< " <> (pack $ show a)]))
         (\(x, labels) this -> (this, labels <> [pack (show x) <> " < x < " <> pack (show this)]))
         (\(x, labels) -> labels <> ["> " <> (pack $ show x)])
     )
@@ -109,7 +108,7 @@ lchart p c xs = mempty & #chartTree .~ unnamed [LineChart (defaultLineStyle & #c
 quantileChart' :: Int -> [Double] -> [(Day, Double)] -> ChartOptions
 quantileChart' n qs r' = c'
   where
-    qss = fmap (taker n) $ List.transpose $ scan (Data.Mealy.Quantiles.quantiles 0.99 qs) (snd <$> r')
+    qss = fmap (taker n) $ List.transpose $ scan (Process.Stats.Quantiles.quantiles 0.99 qs) (snd <$> r')
     c = quantileChart (quantileNames qs) (blendMidLineStyles (length qss) 0.005 (Colour 0.7 0.1 0.3 0.5, Colour 0.1 0.4 0.8 1)) qss
     xaxis = Priority 5 $ timeXAxis 8 (taker n $ (\x -> UTCTime x (P.fromInteger 0)) . fst <$> r')
     yaxis = Priority 5 $ defaultYAxisOptions & #place .~ PlaceLeft & #ticks % #tick .~ TickRound (FormatN FSPercent (Just 2) 4 True True) 6 TickExtend
