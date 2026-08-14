@@ -9,7 +9,6 @@ packages:
   ../formatn/formatn.cabal
   ../process-stats/process-stats.cabal
   ../harpie/harpie.cabal
-  ../harpie-numhask/harpie-numhask.cabal
   ../numhask-diff/numhask-diff.cabal
   ../markup-parse/markup-parse.cabal
 
