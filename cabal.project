@@ -9,7 +9,7 @@ packages:
   ../formatn/formatn.cabal
   ../process-stats/process-stats.cabal
   ../harpie/harpie.cabal
-  ../numhask-diff/numhask-diff.cabal
+  ../circuits-diff/circuits-diff.cabal
   ../markup-parse/markup-parse.cabal
 
 write-ghc-environment-files: always
